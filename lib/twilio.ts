@@ -1,7 +1,11 @@
+// Strip a leading UTF-8 BOM / stray whitespace that can sneak into env vars
+// (e.g. when set from a BOM-encoded file) and break Basic auth / API keys.
+export const cleanEnv = (v?: string) => (v || "").replace(/^\uFEFF/, "").trim();
+
 // Minimal Twilio WhatsApp via REST (no SDK needed).
 export function twilioCreds() {
-  const sid = process.env.TWILIO_ACCOUNT_SID!;
-  const token = process.env.TWILIO_AUTH_TOKEN!;
+  const sid = cleanEnv(process.env.TWILIO_ACCOUNT_SID);
+  const token = cleanEnv(process.env.TWILIO_AUTH_TOKEN);
   return {
     sid,
     token,
@@ -34,9 +38,9 @@ export async function twilioContentPost(path: string, body: any) {
 }
 
 export async function sendWhatsApp(toE164: string, body: string) {
-  const sid = process.env.TWILIO_ACCOUNT_SID!;
-  const token = process.env.TWILIO_AUTH_TOKEN!;
-  const from = process.env.TWILIO_WHATSAPP_FROM!; // e.g. whatsapp:+12202424577
+  const sid = cleanEnv(process.env.TWILIO_ACCOUNT_SID);
+  const token = cleanEnv(process.env.TWILIO_AUTH_TOKEN);
+  const from = cleanEnv(process.env.TWILIO_WHATSAPP_FROM); // e.g. whatsapp:+12202424577
   const to = toE164.startsWith("whatsapp:") ? toE164 : `whatsapp:${toE164}`;
 
   const form = new URLSearchParams({ To: to, From: from, Body: body });

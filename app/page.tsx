@@ -1,107 +1,114 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import { supabaseBrowser } from "@/lib/supabase";
 
-type Conv = { id: string; wa_phone: string; name: string | null; status: string; last_body: string | null; last_at: string | null };
-type Msg = { id: string; conversation: string; direction: string; body: string | null; status: string | null; created_at: string };
+export default function Dashboard() {
+  const [ins, setIns] = useState<any>(null);
+  const [bill, setBill] = useState<any>(null);
+  const [tpls, setTpls] = useState<any[] | null>(null);
+  const [convs, setConvs] = useState<any[] | null>(null);
+  const [loading, setLoading] = useState(true);
 
-export default function Inbox() {
-  const sb = useRef(supabaseBrowser());
-  const [convs, setConvs] = useState<Conv[]>([]);
-  const [active, setActive] = useState<Conv | null>(null);
-  const [msgs, setMsgs] = useState<Msg[]>([]);
-  const [text, setText] = useState("");
-  const [sending, setSending] = useState(false);
-
-  async function loadConvs() {
-    const { data } = await sb.current.from("conversations").select("*").order("last_at", { ascending: false });
-    setConvs((data as Conv[]) || []);
-  }
-  async function loadMsgs(id: string) {
-    const { data } = await sb.current.from("messages").select("*").eq("conversation", id).order("created_at");
-    setMsgs((data as Msg[]) || []);
-  }
-
-  useEffect(() => { loadConvs(); }, []);
   useEffect(() => {
-    const ch = sb.current
-      .channel("rt")
-      .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, () => { if (active) loadMsgs(active.id); loadConvs(); })
-      .on("postgres_changes", { event: "*", schema: "public", table: "conversations" }, () => loadConvs())
-      .subscribe();
-    return () => { sb.current.removeChannel(ch); };
-  }, [active]);
+    (async () => {
+      const sb = supabaseBrowser();
+      const [insR, billR, tplR, convR] = await Promise.allSettled([
+        fetch("/api/insights?days=7").then((r) => r.json()),
+        fetch("/api/billing?days=30").then((r) => r.json()),
+        fetch("/api/templates").then((r) => r.json()),
+        sb.from("conversations").select("*").order("last_at", { ascending: false }).limit(100),
+      ]);
+      if (insR.status === "fulfilled") setIns(insR.value);
+      if (billR.status === "fulfilled") setBill(billR.value);
+      if (tplR.status === "fulfilled") setTpls(tplR.value.templates || []);
+      if (convR.status === "fulfilled") setConvs((convR.value as any).data || []);
+      setLoading(false);
+    })();
+  }, []);
 
-  async function open(c: Conv) { setActive(c); await loadMsgs(c.id); }
-
-  async function send() {
-    if (!active || !text.trim()) return;
-    setSending(true);
-    const res = await fetch("/api/send", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone: "+" + active.wa_phone, body: text }),
-    });
-    setSending(false);
-    if (res.ok) { setText(""); loadMsgs(active.id); loadConvs(); }
-    else alert("Send failed: " + (await res.json()).error);
-  }
+  const t = ins?.totals;
+  const unread = (convs || []).filter((c) => c.unread).length;
+  const pending = (tpls || []).filter((x) => x.status !== "approved").length;
+  const approved = (tpls || []).filter((x) => x.status === "approved").length;
+  const bal = bill?.balance;
+  const recent = (convs || []).slice(0, 6);
 
   return (
-    <div style={{ display: "flex", height: "100%" }}>
-      <aside style={{ width: 320, borderRight: "1px solid #E4E1DB", background: "#fff", overflowY: "auto" }}>
-        <div style={{ padding: "18px 20px", fontFamily: "Georgia, serif", letterSpacing: 3, borderBottom: "1px solid #E4E1DB", background: "#141414", color: "#fff" }}>ERE HOMES · WHATSAPP</div>
-        {convs.map((c) => (
-          <div key={c.id} onClick={() => open(c)} style={{ padding: "14px 20px", borderBottom: "1px solid #F0EEE9", cursor: "pointer", background: active?.id === c.id ? "#F3F1EC" : "#fff" }}>
-            <div style={{ fontWeight: 600 }}>{c.name || "+" + c.wa_phone}{c.status === "blocked" && <span style={{ color: "#b00", fontSize: 11, marginLeft: 8 }}>blocked</span>}</div>
-            <div style={{ fontSize: 13, color: "#6B6862", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.last_body}</div>
-          </div>
-        ))}
-        {convs.length === 0 && <div style={{ padding: 20, color: "#6B6862" }}>No conversations yet. Send one below.</div>}
-      </aside>
+    <div style={{ maxWidth: 1100, margin: "0 auto", padding: "28px 20px" }}>
+      <h1 style={{ fontFamily: "Georgia, serif", fontWeight: 400, fontSize: 26, margin: "0 0 18px" }}>Dashboard</h1>
 
-      <main style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-        {active ? (
-          <>
-            <div style={{ padding: "16px 22px", borderBottom: "1px solid #E4E1DB", background: "#fff", fontWeight: 600 }}>+{active.wa_phone}</div>
-            <div style={{ flex: 1, overflowY: "auto", padding: 22 }}>
-              {msgs.map((m) => (
-                <div key={m.id} style={{ display: "flex", justifyContent: m.direction === "out" ? "flex-end" : "flex-start", marginBottom: 10 }}>
-                  <div style={{ maxWidth: "70%", padding: "10px 14px", borderRadius: 12, whiteSpace: "pre-wrap", background: m.direction === "out" ? "#DCF8C6" : "#fff", border: "1px solid #E4E1DB", fontSize: 14 }}>
-                    {m.body}
-                    <div style={{ fontSize: 10, color: "#9a958c", marginTop: 4, textAlign: "right" }}>{m.status}</div>
+      {loading && <div style={{ color: "#6B6862" }}>Loading…</div>}
+
+      {!loading && (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12, marginBottom: 22 }}>
+            <Stat label="Conversations" value={convs?.length ?? "—"} href="/inbox" />
+            <Stat label="Unread" value={unread} href="/inbox" color={unread ? "#137333" : undefined} />
+            <Stat label="Sent · 7d" value={t?.outbound ?? "—"} href="/insights" />
+            <Stat label="Delivery rate" value={t ? `${t.deliveryRate}%` : "—"} href="/insights" />
+            <Stat label="Read rate" value={t ? `${t.readRate}%` : "—"} href="/insights" />
+            <Stat label="Failed · 7d" value={t ? t.failed + t.undelivered : "—"} href="/insights" color={t && t.failed + t.undelivered ? "#b00020" : undefined} />
+            <Stat label="Balance" value={bal ? `${bal.currency} ${parseFloat(bal.balance).toFixed(2)}` : "—"} href="/billing" />
+            <Stat label="Templates" value={tpls ? `${approved}✓ / ${pending}…` : "—"} href="/templates" />
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 16 }}>
+            {/* Recent conversations */}
+            <Panel title="Recent conversations" link={{ href: "/inbox", label: "Open inbox →" }}>
+              {recent.length === 0 && <Empty>No conversations yet.</Empty>}
+              {recent.map((c) => (
+                <Link key={c.id} href="/inbox" style={{ textDecoration: "none", color: "inherit" }}>
+                  <div style={{ display: "flex", gap: 10, alignItems: "center", padding: "10px 0", borderBottom: "1px solid #F0EEE9" }}>
+                    {c.unread && <span style={{ width: 8, height: 8, borderRadius: 8, background: "#137333", flexShrink: 0 }} />}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: c.unread ? 700 : 600, fontSize: 14 }}>{c.name || "+" + c.wa_phone}</div>
+                      <div style={{ fontSize: 12, color: "#6B6862", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.last_body}</div>
+                    </div>
+                    {c.last_at && <span style={{ fontSize: 11, color: "#9a958c" }}>{new Date(c.last_at).toLocaleDateString([], { month: "short", day: "numeric" })}</span>}
                   </div>
+                </Link>
+              ))}
+            </Panel>
+
+            {/* Templates + quick actions */}
+            <Panel title="Templates" link={{ href: "/templates", label: "Manage →" }}>
+              {(tpls || []).slice(0, 6).map((x) => (
+                <div key={x.sid} style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderBottom: "1px solid #F0EEE9", fontSize: 14 }}>
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{x.name}</span>
+                  <span style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1, color: x.status === "approved" ? "#137333" : x.status === "rejected" ? "#b00020" : "#9a6700" }}>{x.status}</span>
                 </div>
               ))}
-            </div>
-            <div style={{ padding: 16, borderTop: "1px solid #E4E1DB", background: "#fff", display: "flex", gap: 10 }}>
-              <input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} placeholder="Type a message" style={{ flex: 1, padding: "12px 14px", border: "1px solid #E4E1DB", borderRadius: 8, fontSize: 14 }} />
-              <button onClick={send} disabled={sending} style={{ padding: "12px 24px", background: "#141414", color: "#fff", border: "none", borderRadius: 8, letterSpacing: 1, textTransform: "uppercase", fontSize: 12, cursor: "pointer" }}>{sending ? "..." : "Send"}</button>
-            </div>
-          </>
-        ) : (
-          <NewMessage onSent={loadConvs} />
-        )}
-      </main>
+              {tpls && tpls.length === 0 && <Empty>No templates yet.</Empty>}
+            </Panel>
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
-function NewMessage({ onSent }: { onSent: () => void }) {
-  const [phone, setPhone] = useState("");
-  const [body, setBody] = useState("");
-  const [busy, setBusy] = useState(false);
-  async function go() {
-    setBusy(true);
-    const res = await fetch("/api/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone, body }) });
-    setBusy(false);
-    if (res.ok) { setPhone(""); setBody(""); onSent(); } else alert("Failed: " + (await res.json()).error);
-  }
+function Stat({ label, value, href, color }: { label: string; value: any; href: string; color?: string }) {
   return (
-    <div style={{ margin: "auto", width: 380, textAlign: "center" }}>
-      <div style={{ marginBottom: 14, color: "#6B6862" }}>Start a conversation</div>
-      <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+9715XXXXXXXX" style={{ width: "100%", padding: 12, marginBottom: 8, border: "1px solid #E4E1DB", borderRadius: 8, boxSizing: "border-box" }} />
-      <textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder="Message (within 24h window)" rows={3} style={{ width: "100%", padding: 12, marginBottom: 8, border: "1px solid #E4E1DB", borderRadius: 8, boxSizing: "border-box" }} />
-      <button onClick={go} disabled={busy} style={{ padding: "12px 24px", background: "#141414", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer" }}>{busy ? "Sending..." : "Send"}</button>
+    <Link href={href} style={{ textDecoration: "none" }}>
+      <div style={{ background: "#fff", border: "1px solid #E4E1DB", borderRadius: 12, padding: 16, transition: "border-color .15s" }}>
+        <div style={{ fontSize: 12, color: "#6B6862", marginBottom: 6 }}>{label}</div>
+        <div style={{ fontSize: 24, fontWeight: 600, color: color || "#141414" }}>{value}</div>
+      </div>
+    </Link>
+  );
+}
+function Panel({ title, link, children }: { title: string; link: { href: string; label: string }; children: React.ReactNode }) {
+  return (
+    <div style={{ background: "#fff", border: "1px solid #E4E1DB", borderRadius: 12, padding: 18 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <span style={{ fontWeight: 600 }}>{title}</span>
+        <Link href={link.href} style={{ fontSize: 12, color: "#6B6862", textDecoration: "none" }}>{link.label}</Link>
+      </div>
+      {children}
     </div>
   );
+}
+function Empty({ children }: { children: React.ReactNode }) {
+  return <div style={{ color: "#9a958c", fontSize: 14, padding: "8px 0" }}>{children}</div>;
 }

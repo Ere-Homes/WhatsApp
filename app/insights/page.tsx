@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { errorCause } from "@/lib/twilioErrors";
 
 type Data = {
   range: { days: number; since: string };
@@ -19,15 +20,6 @@ const STATUS_COLOR: Record<string, string> = {
   failed: "#b00020", undelivered: "#b00020", received: "#6B6862",
 };
 
-// A few common WhatsApp/Twilio error codes for readability.
-const ERR_LABEL: Record<string, string> = {
-  "63049": "Msg failed to send (Meta)",
-  "63016": "Outside 24h window — needs template",
-  "63024": "Invalid message / parameter",
-  "63003": "Could not find recipient",
-  "21211": "Invalid 'To' number",
-  "63015": "Channel sandbox: recipient not opted in",
-};
 
 export default function Insights() {
   const [days, setDays] = useState(7);
@@ -112,10 +104,19 @@ export default function Insights() {
                 <Row key={s} left={<span><Dot c={STATUS_COLOR[s] || "#6B6862"} />{s}</span>} right={n} />
               ))}
             </Section>
-            <Section title="Errors">
+            <Section title="Errors (code · cause)">
               {Object.keys(data!.byErr).length === 0 && <div style={{ color: "#137333" }}>No errors 🎉</div>}
               {Object.entries(data!.byErr).sort((a, b) => b[1] - a[1]).map(([code, n]) => (
-                <Row key={code} left={<span><b>{code}</b> · {ERR_LABEL[code] || "see Twilio docs"}</span>} right={n} />
+                <Row
+                  key={code}
+                  left={
+                    <span>
+                      <a href={`https://www.twilio.com/docs/api/errors/${code}`} target="_blank" rel="noreferrer" style={{ color: "#b00020", fontWeight: 700, textDecoration: "none" }}>{code}</a>
+                      <span style={{ color: "#6B6862" }}> · {errorCause(code)}</span>
+                    </span>
+                  }
+                  right={n}
+                />
               ))}
             </Section>
           </div>
@@ -137,7 +138,7 @@ export default function Insights() {
                       <td style={td}>{m.direction?.startsWith("outbound") ? "→" : "←"}</td>
                       <td style={td}>{m.direction?.startsWith("outbound") ? m.to : m.from}</td>
                       <td style={{ ...td, color: STATUS_COLOR[m.status] || "#1F1C17" }}>{m.status}</td>
-                      <td style={{ ...td, color: m.error_code ? "#b00020" : "#cfccc6" }}>{m.error_code || "—"}</td>
+                      <td style={{ ...td, color: m.error_code ? "#b00020" : "#cfccc6" }} title={m.error_code ? errorCause(m.error_code) : ""}>{m.error_code || "—"}</td>
                       <td style={{ ...td, maxWidth: 320, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.body}</td>
                       <td style={td}>{m.price || "—"}</td>
                     </tr>

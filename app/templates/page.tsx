@@ -46,6 +46,45 @@ export default function Templates() {
     load();
   }, []);
 
+  const [busySid, setBusySid] = useState<string | null>(null);
+
+  async function deleteTpl(t: Tpl) {
+    if (!confirm(`Delete template "${t.name}"? This removes it from Twilio and cannot be undone.`)) return;
+    setBusySid(t.sid);
+    setErr(null);
+    try {
+      const res = await fetch(`/api/templates?sid=${encodeURIComponent(t.sid)}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Delete failed");
+      setTpls((prev) => prev.filter((x) => x.sid !== t.sid));
+    } catch (e: any) {
+      setErr(e.message);
+    } finally {
+      setBusySid(null);
+    }
+  }
+
+  async function duplicateTpl(t: Tpl) {
+    const name = prompt(`New name for the copy of "${t.name}"`, `${t.name}_copy`);
+    if (!name) return;
+    setBusySid(t.sid);
+    setErr(null);
+    try {
+      const res = await fetch("/api/templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ duplicateOf: t.sid, name: name.toLowerCase(), category: t.category }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Duplicate failed");
+      load();
+    } catch (e: any) {
+      setErr(e.message);
+    } finally {
+      setBusySid(null);
+    }
+  }
+
   return (
     <div style={{ maxWidth: 1000, margin: "0 auto", padding: "28px 24px" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
@@ -118,6 +157,15 @@ export default function Templates() {
                 Rejected: {t.rejection_reason}
               </div>
             )}
+
+            <div style={{ display: "flex", gap: 8, marginTop: 14, borderTop: "1px solid #F0EEE9", paddingTop: 12 }}>
+              <button onClick={() => duplicateTpl(t)} disabled={busySid === t.sid} style={action}>
+                {busySid === t.sid ? "…" : "Duplicate"}
+              </button>
+              <button onClick={() => deleteTpl(t)} disabled={busySid === t.sid} style={{ ...action, color: "#b00020", borderColor: "#f0c5c0" }}>
+                Delete
+              </button>
+            </div>
           </div>
         ))}
       </div>
@@ -342,6 +390,14 @@ const pill: React.CSSProperties = {
   fontSize: 13,
 };
 const pillActive: React.CSSProperties = { background: "#141414", color: "#fff", borderColor: "#141414" };
+const action: React.CSSProperties = {
+  padding: "7px 16px",
+  background: "#fff",
+  border: "1px solid #E4E1DB",
+  borderRadius: 8,
+  cursor: "pointer",
+  fontSize: 13,
+};
 const input: React.CSSProperties = {
   width: "100%",
   padding: "10px 12px",

@@ -37,6 +37,19 @@ export async function twilioContentPost(path: string, body: any) {
   return data;
 }
 
+// DELETE against content.twilio.com (Content API). 204 = success, no body.
+export async function twilioContentDelete(path: string) {
+  const { authHeader } = twilioCreds();
+  const res = await fetch(`https://content.twilio.com${path}`, {
+    method: "DELETE",
+    headers: { Authorization: authHeader },
+  });
+  if (!res.ok && res.status !== 204) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data?.message || `Twilio DELETE ${res.status}`);
+  }
+}
+
 export async function sendWhatsApp(toE164: string, body: string) {
   const sid = cleanEnv(process.env.TWILIO_ACCOUNT_SID);
   const token = cleanEnv(process.env.TWILIO_AUTH_TOKEN);

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { twilioGet, twilioContentPost } from "@/lib/twilio";
+import { twilioGet, twilioContentPost, twilioContentDelete } from "@/lib/twilio";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,6 +46,12 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const b = await req.json();
+
+    // Duplicate: clone an existing template's content under a new name.
+    if (b.duplicateOf) {
+      return await duplicate(b.duplicateOf, b.name, b.category);
+    }
+
     const name: string = (b.name || "").trim();
     const language: string = (b.language || "en").trim();
     const category: string = (b.category || "MARKETING").trim();
@@ -122,4 +128,52 @@ function mapAction(x: any) {
   if (x.type === "phone" && x.phone) return { type: "PHONE_NUMBER", title, phone: x.phone };
   if (x.type === "quick-reply") return { type: "QUICK_REPLY", title, id: x.id || title.toLowerCase().replace(/\s+/g, "_") };
   return null;
+}
+
+// Delete a template (Content + its approval). DELETE /api/templates?sid=HX...
+export async function DELETE(req: NextRequest) {
+  try {
+    const sid = req.nextUrl.searchParams.get("sid");
+    if (!sid) return NextResponse.json({ error: "sid is required" }, { status: 400 });
+    await twilioContentDelete(`/v1/Content/${sid}`);
+    return NextResponse.json({ deleted: sid });
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message || "Failed to delete template" }, { status: 500 });
+  }
+}
+
+// Clone an existing template's content under a new name, then resubmit for approval.
+async function duplicate(sid: string, rawName: string, rawCategory?: string) {
+  const orig: any = await twilioGet(`https://content.twilio.com/v1/Content/${sid}`);
+  const name = (rawName || `${orig.friendly_name}_copy`).trim();
+  if (!/^[a-z0-9_]+$/.test(name))
+    return NextResponse.json({ error: "Name must be lowercase letters, numbers and underscores only" }, { status: 400 });
+
+  const content: any = await twilioContentPost("/v1/Content", {
+    friendly_name: name,
+    language: orig.language || "en",
+    ...(orig.variables && Object.keys(orig.variables).length ? { variables: orig.variables } : {}),
+    types: orig.types,
+  });
+
+  // Resubmit for WhatsApp approval (a clone needs its own approval).
+  let approvalError: string | null = null;
+  let approval: any = null;
+  try {
+    approval = await twilioContentPost(`/v1/Content/${content.sid}/ApprovalRequests/whatsapp`, {
+      name,
+      category: rawCategory || "MARKETING",
+    });
+  } catch (e: any) {
+    approvalError = e.message || "Approval submission failed";
+  }
+
+  return NextResponse.json({
+    sid: content.sid,
+    name,
+    duplicatedFrom: sid,
+    submitted: !approvalError,
+    status: approval?.status || (approvalError ? "unsubmitted" : "received"),
+    approvalError,
+  });
 }

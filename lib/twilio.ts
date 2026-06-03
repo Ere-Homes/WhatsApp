@@ -20,6 +20,19 @@ export async function twilioGet(url: string) {
   return data;
 }
 
+// JSON POST against content.twilio.com (Content API).
+export async function twilioContentPost(path: string, body: any) {
+  const { authHeader } = twilioCreds();
+  const res = await fetch(`https://content.twilio.com${path}`, {
+    method: "POST",
+    headers: { Authorization: authHeader, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.message || `Twilio POST ${res.status}`);
+  return data;
+}
+
 export async function sendWhatsApp(toE164: string, body: string) {
   const sid = process.env.TWILIO_ACCOUNT_SID!;
   const token = process.env.TWILIO_AUTH_TOKEN!;

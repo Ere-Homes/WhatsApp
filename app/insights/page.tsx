@@ -83,7 +83,6 @@ export default function Insights() {
             <Card label="Delivery rate" value={`${t.deliveryRate}%`} sub={`${t.delivered + t.read} reached`} />
             <Card label="Read rate" value={`${t.readRate}%`} sub={`${t.read} read`} />
             <Card label="Failed / undeliv." value={t.failed + t.undelivered} sub={`${t.failRate}% of outbound`} color={t.failed + t.undelivered ? "#b00020" : undefined} />
-            <Card label={`Spend (${t.currency})`} value={t.priceTotal.toFixed(4)} />
           </div>
 
           {/* By-day trend */}

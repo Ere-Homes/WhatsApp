@@ -6,6 +6,7 @@ const TABS = [
   { href: "/", label: "Inbox" },
   { href: "/templates", label: "Templates" },
   { href: "/insights", label: "Insights" },
+  { href: "/billing", label: "Billing" },
 ];
 
 export default function Nav() {

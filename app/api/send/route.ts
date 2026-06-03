@@ -31,6 +31,12 @@ export async function POST(req: NextRequest) {
       twilio_sid: tw.sid,
     });
 
+    // denormalize last-message status onto the conversation (for the inbox list)
+    await db
+      .from("conversations")
+      .update({ last_direction: "out", last_status: tw.status, unread: false })
+      .eq("id", conv!.id);
+
     return NextResponse.json({ ok: true, sid: tw.sid, status: tw.status });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });

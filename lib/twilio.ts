@@ -57,6 +57,17 @@ export async function sendWhatsApp(toE164: string, body: string) {
   const to = toE164.startsWith("whatsapp:") ? toE164 : `whatsapp:${toE164}`;
 
   const form = new URLSearchParams({ To: to, From: from, Body: body });
+
+  // Ask Twilio to report delivery status back to us. The bypass query param
+  // lets the callback through Vercel Deployment Protection.
+  const base =
+    cleanEnv(process.env.PUBLIC_BASE_URL) ||
+    (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${cleanEnv(process.env.VERCEL_PROJECT_PRODUCTION_URL)}` : "");
+  const bypass = cleanEnv(process.env.VERCEL_AUTOMATION_BYPASS_SECRET);
+  if (base) {
+    const cb = `${base}/api/twilio/status${bypass ? `?x-vercel-protection-bypass=${bypass}&x-vercel-set-bypass-cookie=true` : ""}`;
+    form.set("StatusCallback", cb);
+  }
   const res = await fetch(
     `https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`,
     {

@@ -21,6 +21,8 @@ export async function POST(req: NextRequest) {
   await db.from("messages").insert({
     conversation: conv!.id, direction: "in", body, status: "received", twilio_sid: sid,
   });
+  // mark the conversation unread + last message inbound
+  await db.from("conversations").update({ unread: true, last_direction: "in", last_status: "received" }).eq("id", conv!.id);
 
   // simple keyword automation (this is the part Pipedrive couldn't do)
   const text = body.trim().toUpperCase();

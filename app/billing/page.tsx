@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { RATES, RATE_ROWS } from "@/lib/rates";
 
 type Data = {
   balance: { balance: string; currency: string } | null;
@@ -89,6 +90,24 @@ export default function Billing() {
                   <div style={{ fontSize: 10, color: "#9a958c", marginTop: 4 }}>{d.day.slice(5)}</div>
                 </div>
               ))}
+            </div>
+          </div>
+
+          {/* Rate reference */}
+          <div style={{ background: "#fff", border: "1px solid #E4E1DB", borderRadius: 12, padding: 18, marginTop: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <span style={{ fontSize: 13, fontWeight: 600 }}>WhatsApp rate reference (USD)</span>
+              <a href={RATES.source} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "#6B6862" }}>Twilio pricing ↗</a>
+            </div>
+            {RATE_ROWS.map((r) => (
+              <div key={r.label} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid #F0EEE9", fontSize: 14 }}>
+                <span>{r.label}{r.note && <span style={{ color: "#9a958c", fontSize: 12 }}> · {r.note}</span>}</span>
+                <b>{r.value === null ? "set rate" : `$${r.value.toFixed(4)}`}</b>
+              </div>
+            ))}
+            <div style={{ fontSize: 11, color: "#9a958c", marginTop: 10 }}>
+              Reference only. Marketing is country-specific (UAE not published) — set it in <code>lib/rates.ts</code>.
+              Estimated floor for this window: <b>{cur} {(s!.messages * RATES.twilioPerMessage).toFixed(2)}</b> ({s!.messages} msgs × ${RATES.twilioPerMessage}).
             </div>
           </div>
 

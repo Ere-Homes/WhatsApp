@@ -8,3 +8,8 @@ next-env.d.ts
 .supabase_pat
 .env.local
 _setup_supabase.py
+
+.vercel_token
+_deploy.ps1
+.vercel
+_dev.log

@@ -1,4 +1,25 @@
-// Minimal Twilio WhatsApp send via REST (no SDK needed).
+// Minimal Twilio WhatsApp via REST (no SDK needed).
+export function twilioCreds() {
+  const sid = process.env.TWILIO_ACCOUNT_SID!;
+  const token = process.env.TWILIO_AUTH_TOKEN!;
+  return {
+    sid,
+    token,
+    authHeader: "Basic " + Buffer.from(`${sid}:${token}`).toString("base64"),
+  };
+}
+
+// GET against any Twilio host (api.twilio.com or content.twilio.com).
+// `url` may be a full URL or a path beginning with "/".
+export async function twilioGet(url: string) {
+  const { authHeader } = twilioCreds();
+  const full = url.startsWith("http") ? url : `https://api.twilio.com${url}`;
+  const res = await fetch(full, { headers: { Authorization: authHeader } });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.message || `Twilio GET ${res.status}`);
+  return data;
+}
+
 export async function sendWhatsApp(toE164: string, body: string) {
   const sid = process.env.TWILIO_ACCOUNT_SID!;
   const token = process.env.TWILIO_AUTH_TOKEN!;

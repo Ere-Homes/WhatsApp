@@ -1,0 +1,120 @@
+import { NextRequest, NextResponse } from "next/server";
+import { twilioCreds, twilioGet } from "@/lib/twilio";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+// Twilio messaging insights + logs, computed from the Messages list API.
+// Mirrors the Console "Messaging Insights" page: volume, delivery/read rate,
+// error-code breakdown, by-day trend, plus the raw message log.
+export async function GET(req: NextRequest) {
+  try {
+    const { sid } = twilioCreds();
+    const days = Math.min(Math.max(parseInt(req.nextUrl.searchParams.get("days") || "7", 10), 1), 90);
+    const maxPages = Math.min(parseInt(req.nextUrl.searchParams.get("maxPages") || "10", 10), 40);
+
+    // DateSent>=YYYY-MM-DD filter (UTC).
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const sinceStr = since.toISOString().slice(0, 10);
+
+    let url: string | null =
+      `https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json` +
+      `?PageSize=200&DateSent%3E=${sinceStr}`;
+
+    const messages: any[] = [];
+    let pages = 0;
+    while (url && pages++ < maxPages) {
+      const data: any = await twilioGet(url);
+      messages.push(...(data.messages || []));
+      url = data.next_page_uri ? `https://api.twilio.com${data.next_page_uri}` : null;
+    }
+
+    // Aggregate
+    const byStatus: Record<string, number> = {};
+    const byErr: Record<string, number> = {};
+    const byDay: Record<string, { out: number; in: number }> = {};
+    let outbound = 0,
+      inbound = 0,
+      delivered = 0,
+      read = 0,
+      failed = 0,
+      undelivered = 0,
+      priceTotal = 0;
+    let currency = "USD";
+
+    for (const m of messages) {
+      const status = m.status || "unknown";
+      byStatus[status] = (byStatus[status] || 0) + 1;
+
+      const isOut = (m.direction || "").startsWith("outbound");
+      if (isOut) outbound++;
+      else inbound++;
+
+      if (status === "delivered") delivered++;
+      if (status === "read") read++;
+      if (status === "failed") failed++;
+      if (status === "undelivered") undelivered++;
+
+      if (m.error_code) {
+        const k = String(m.error_code);
+        byErr[k] = (byErr[k] || 0) + 1;
+      }
+
+      if (m.price) {
+        priceTotal += Math.abs(parseFloat(m.price));
+        if (m.price_unit) currency = m.price_unit;
+      }
+
+      const d = (m.date_sent || m.date_created || "").slice(0, 16); // "Wed, 03 Jun 2026"
+      const dayKey = m.date_sent ? new Date(m.date_sent).toISOString().slice(0, 10) : d;
+      if (!byDay[dayKey]) byDay[dayKey] = { out: 0, in: 0 };
+      if (isOut) byDay[dayKey].out++;
+      else byDay[dayKey].in++;
+    }
+
+    // delivered+read count as reaching the handset
+    const reached = delivered + read;
+    const deliveryRate = outbound ? Math.round((reached / outbound) * 1000) / 10 : 0;
+    const readRate = reached ? Math.round((read / reached) * 1000) / 10 : 0;
+    const failRate = outbound ? Math.round(((failed + undelivered) / outbound) * 1000) / 10 : 0;
+
+    const logs = messages.map((m) => ({
+      sid: m.sid,
+      date: m.date_sent || m.date_created,
+      direction: m.direction,
+      from: m.from,
+      to: m.to,
+      status: m.status,
+      error_code: m.error_code || null,
+      body: (m.body || "").slice(0, 140),
+      price: m.price || null,
+    }));
+
+    return NextResponse.json({
+      range: { days, since: sinceStr },
+      totals: {
+        total: messages.length,
+        outbound,
+        inbound,
+        delivered,
+        read,
+        failed,
+        undelivered,
+        deliveryRate,
+        readRate,
+        failRate,
+        priceTotal: Math.round(priceTotal * 10000) / 10000,
+        currency,
+        capped: pages >= maxPages,
+      },
+      byStatus,
+      byErr,
+      byDay: Object.entries(byDay)
+        .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+        .map(([day, v]) => ({ day, ...v })),
+      logs,
+    });
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message || "Failed to load insights" }, { status: 500 });
+  }
+}

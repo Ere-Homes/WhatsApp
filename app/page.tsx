@@ -47,7 +47,7 @@ export default function Inbox() {
   }
 
   return (
-    <div style={{ display: "flex", height: "100vh" }}>
+    <div style={{ display: "flex", height: "100%" }}>
       <aside style={{ width: 320, borderRight: "1px solid #E4E1DB", background: "#fff", overflowY: "auto" }}>
         <div style={{ padding: "18px 20px", fontFamily: "Georgia, serif", letterSpacing: 3, borderBottom: "1px solid #E4E1DB", background: "#141414", color: "#fff" }}>ERE HOMES · WHATSAPP</div>
         {convs.map((c) => (

@@ -1,0 +1,10 @@
+node_modules
+.next
+.env
+.env.local
+.vercel
+*.tsbuildinfo
+next-env.d.ts
+.supabase_pat
+.env.local
+_setup_supabase.py

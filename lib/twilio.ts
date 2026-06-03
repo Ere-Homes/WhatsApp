@@ -50,36 +50,45 @@ export async function twilioContentDelete(path: string) {
   }
 }
 
-export async function sendWhatsApp(toE164: string, body: string) {
-  const sid = cleanEnv(process.env.TWILIO_ACCOUNT_SID);
-  const token = cleanEnv(process.env.TWILIO_AUTH_TOKEN);
-  const from = cleanEnv(process.env.TWILIO_WHATSAPP_FROM); // e.g. whatsapp:+12202424577
-  const to = toE164.startsWith("whatsapp:") ? toE164 : `whatsapp:${toE164}`;
-
-  const form = new URLSearchParams({ To: to, From: from, Body: body });
-
-  // Ask Twilio to report delivery status back to us. The bypass query param
-  // lets the callback through Vercel Deployment Protection.
+// Delivery-status callback URL; bypass param lets Twilio through Vercel protection.
+function statusCallbackUrl() {
   const base =
     cleanEnv(process.env.PUBLIC_BASE_URL) ||
     (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${cleanEnv(process.env.VERCEL_PROJECT_PRODUCTION_URL)}` : "");
+  if (!base) return "";
   const bypass = cleanEnv(process.env.VERCEL_AUTOMATION_BYPASS_SECRET);
-  if (base) {
-    const cb = `${base}/api/twilio/status${bypass ? `?x-vercel-protection-bypass=${bypass}&x-vercel-set-bypass-cookie=true` : ""}`;
-    form.set("StatusCallback", cb);
-  }
-  const res = await fetch(
-    `https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: "Basic " + Buffer.from(`${sid}:${token}`).toString("base64"),
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: form,
-    }
-  );
+  return `${base}/api/twilio/status${bypass ? `?x-vercel-protection-bypass=${bypass}&x-vercel-set-bypass-cookie=true` : ""}`;
+}
+
+async function postMessage(form: URLSearchParams) {
+  const sid = cleanEnv(process.env.TWILIO_ACCOUNT_SID);
+  const token = cleanEnv(process.env.TWILIO_AUTH_TOKEN);
+  form.set("From", cleanEnv(process.env.TWILIO_WHATSAPP_FROM));
+  const cb = statusCallbackUrl();
+  if (cb) form.set("StatusCallback", cb);
+  const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+    method: "POST",
+    headers: {
+      Authorization: "Basic " + Buffer.from(`${sid}:${token}`).toString("base64"),
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: form,
+  });
   const data = await res.json();
   if (!res.ok) throw new Error(data?.message || "Twilio send failed");
   return data; // includes sid, status
+}
+
+const waTo = (toE164: string) => (toE164.startsWith("whatsapp:") ? toE164 : `whatsapp:${toE164}`);
+
+// Free-form message (only valid inside the 24h customer-service window).
+export async function sendWhatsApp(toE164: string, body: string) {
+  return postMessage(new URLSearchParams({ To: waTo(toE164), Body: body }));
+}
+
+// Approved template message (works outside the 24h window).
+export async function sendTemplate(toE164: string, contentSid: string, variables?: Record<string, string>) {
+  const form = new URLSearchParams({ To: waTo(toE164), ContentSid: contentSid });
+  if (variables && Object.keys(variables).length) form.set("ContentVariables", JSON.stringify(variables));
+  return postMessage(form);
 }

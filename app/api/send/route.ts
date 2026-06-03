@@ -1,32 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
-import { sendWhatsApp } from "@/lib/twilio";
+import { sendWhatsApp, sendTemplate } from "@/lib/twilio";
 
-// POST { phone: "+9715...", body: "text" }  -> sends via Twilio + logs to Supabase
+// POST free-form: { phone, body }
+// POST template:  { phone, contentSid, variables?, label? }  (works outside 24h window)
 export async function POST(req: NextRequest) {
   try {
-    const { phone, body } = await req.json();
-    if (!phone || !body) {
-      return NextResponse.json({ error: "phone and body required" }, { status: 400 });
+    const { phone, body, contentSid, variables, label } = await req.json();
+    if (!phone || (!body && !contentSid)) {
+      return NextResponse.json({ error: "phone and body (or contentSid) required" }, { status: 400 });
     }
+    // What we store/show in the inbox bubble
+    const displayBody = contentSid ? (label || "[template]") : body;
     const e164 = String(phone).replace(/[^0-9+]/g, "");
     const db = supabaseAdmin();
 
     // upsert conversation
     const { data: conv } = await db
       .from("conversations")
-      .upsert({ wa_phone: e164.replace("+", ""), last_body: body, last_at: new Date().toISOString() }, { onConflict: "wa_phone" })
+      .upsert({ wa_phone: e164.replace("+", ""), last_body: displayBody, last_at: new Date().toISOString() }, { onConflict: "wa_phone" })
       .select()
       .single();
 
-    // send via Twilio
-    const tw = await sendWhatsApp(e164, body);
+    // send via Twilio (template or free-form)
+    const tw = contentSid ? await sendTemplate(e164, contentSid, variables) : await sendWhatsApp(e164, body);
 
     // log outbound message
     await db.from("messages").insert({
       conversation: conv!.id,
       direction: "out",
-      body,
+      body: displayBody,
       status: tw.status,
       twilio_sid: tw.sid,
     });

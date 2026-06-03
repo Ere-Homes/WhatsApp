@@ -119,7 +119,8 @@ export default function Inbox() {
                   </div>
                 ))}
               </div>
-              <div style={{ padding: 14, borderTop: "1px solid #E4E1DB", background: "#fff", display: "flex", gap: 10 }}>
+              <div style={{ padding: 14, borderTop: "1px solid #E4E1DB", background: "#fff", display: "flex", gap: 10, position: "relative" }}>
+                <TemplateSender phone={active.wa_phone} onSent={() => { loadMsgs(active.id); loadConvs(); }} />
                 <input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} placeholder="Type a message" style={{ flex: 1, padding: "12px 14px", border: "1px solid #E4E1DB", borderRadius: 8, fontSize: 14, minWidth: 0 }} />
                 <button onClick={send} disabled={sending} style={{ padding: "12px 22px", background: "#141414", color: "#fff", border: "none", borderRadius: 8, letterSpacing: 1, textTransform: "uppercase", fontSize: 12, cursor: "pointer", flexShrink: 0 }}>{sending ? "..." : "Send"}</button>
               </div>
@@ -128,6 +129,85 @@ export default function Inbox() {
             <NewMessage onSent={loadConvs} />
           )}
         </main>
+      )}
+    </div>
+  );
+}
+
+// Pick an approved template and send it (works outside the 24h window).
+function TemplateSender({ phone, onSent }: { phone: string; onSent: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [tpls, setTpls] = useState<any[]>([]);
+  const [sel, setSel] = useState<any | null>(null);
+  const [vals, setVals] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+
+  async function load() {
+    const res = await fetch("/api/templates");
+    const d = await res.json();
+    setTpls((d.templates || []).filter((t: any) => t.status === "approved"));
+  }
+  function toggle() {
+    const next = !open;
+    setOpen(next);
+    setSel(null);
+    if (next && tpls.length === 0) load();
+  }
+  function pick(t: any) {
+    const vars = t.variables || {};
+    if (Object.keys(vars).length) { setSel(t); setVals({ ...vars }); }
+    else doSend(t, {});
+  }
+  async function doSend(t: any, values: Record<string, string>) {
+    setBusy(true);
+    let label = t.body || `[${t.name}]`;
+    for (const [k, v] of Object.entries(values)) label = label.replace(new RegExp(`\\{\\{${k}\\}\\}`, "g"), v || `{{${k}}}`);
+    const res = await fetch("/api/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone: "+" + phone, contentSid: t.sid, variables: values, label }),
+    });
+    setBusy(false);
+    if (res.ok) { setOpen(false); setSel(null); onSent(); }
+    else alert("Template send failed: " + (await res.json()).error);
+  }
+
+  const vars = sel ? Object.keys(sel.variables || {}) : [];
+
+  return (
+    <div style={{ flexShrink: 0 }}>
+      <button onClick={toggle} title="Send a template" style={{ padding: "12px 14px", background: "#fff", border: "1px solid #E4E1DB", borderRadius: 8, cursor: "pointer", fontSize: 16 }}>📋</button>
+      {open && (
+        <div style={{ position: "absolute", bottom: 64, left: 14, width: 320, maxHeight: 360, overflowY: "auto", background: "#fff", border: "1px solid #E4E1DB", borderRadius: 12, boxShadow: "0 8px 24px rgba(0,0,0,.12)", padding: 12, zIndex: 20 }}>
+          {!sel && (
+            <>
+              <div style={{ fontSize: 12, color: "#6B6862", marginBottom: 8 }}>Approved templates</div>
+              {tpls.length === 0 && <div style={{ fontSize: 13, color: "#9a958c" }}>No approved templates.</div>}
+              {tpls.map((t) => (
+                <div key={t.sid} onClick={() => pick(t)} style={{ padding: "10px 8px", borderBottom: "1px solid #F0EEE9", cursor: "pointer" }}>
+                  <div style={{ fontWeight: 600, fontSize: 14 }}>{t.name}</div>
+                  <div style={{ fontSize: 12, color: "#6B6862", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.body}</div>
+                </div>
+              ))}
+            </>
+          )}
+          {sel && (
+            <>
+              <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 8 }}>{sel.name}</div>
+              <div style={{ fontSize: 12, color: "#6B6862", marginBottom: 10, whiteSpace: "pre-wrap" }}>{sel.body}</div>
+              {vars.map((k) => (
+                <div key={k} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>{`{{${k}}}`}</span>
+                  <input value={vals[k] || ""} onChange={(e) => setVals({ ...vals, [k]: e.target.value })} placeholder="value" style={{ flex: 1, padding: "8px 10px", border: "1px solid #E4E1DB", borderRadius: 8, fontSize: 13 }} />
+                </div>
+              ))}
+              <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+                <button onClick={() => doSend(sel, vals)} disabled={busy} style={{ flex: 1, padding: "10px", background: "#141414", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 13 }}>{busy ? "Sending…" : "Send template"}</button>
+                <button onClick={() => setSel(null)} style={{ padding: "10px 14px", background: "#fff", border: "1px solid #E4E1DB", borderRadius: 8, cursor: "pointer", fontSize: 13 }}>Back</button>
+              </div>
+            </>
+          )}
+        </div>
       )}
     </div>
   );

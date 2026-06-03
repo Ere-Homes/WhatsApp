@@ -22,6 +22,22 @@ const STATUS_COLOR: Record<string, string> = {
   unsubmitted: "#6B6862",
 };
 
+// WhatsApp template language codes, weighted to ERE's Dubai audience.
+const LANGUAGES = [
+  { code: "en", label: "English" },
+  { code: "en_GB", label: "English (UK)" },
+  { code: "ar", label: "Arabic" },
+  { code: "hi", label: "Hindi" },
+  { code: "ur", label: "Urdu" },
+  { code: "fa", label: "Persian / Farsi" },
+  { code: "ru", label: "Russian" },
+  { code: "fr", label: "French" },
+  { code: "fil", label: "Filipino" },
+  { code: "zh_CN", label: "Chinese (Simplified)" },
+  { code: "es", label: "Spanish" },
+  { code: "de", label: "German" },
+];
+
 export default function Templates() {
   const [tpls, setTpls] = useState<Tpl[]>([]);
   const [loading, setLoading] = useState(true);
@@ -181,14 +197,21 @@ function NewTemplate({ onCreated }: { onCreated: () => void }) {
   const [category, setCategory] = useState("MARKETING");
   const [language, setLanguage] = useState("en");
   const [body, setBody] = useState("");
-  const [title, setTitle] = useState("");
-  const [subtitle, setSubtitle] = useState("");
+  const [headerType, setHeaderType] = useState<"none" | "text" | "image">("none");
+  const [headerText, setHeaderText] = useState("");
+  const [footer, setFooter] = useState("");
   const [mediaUrl, setMediaUrl] = useState("");
   const [uploading, setUploading] = useState(false);
   const [buttons, setButtons] = useState<Btn[]>([]);
+  const [varDefaults, setVarDefaults] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+
+  // Detect {{1}}, {{2}}… across all text fields so we can offer a default per variable.
+  const detectedVars = Array.from(
+    new Set([...`${body} ${headerText} ${footer}`.matchAll(/\{\{(\d+)\}\}/g)].map((m) => m[1]))
+  ).sort((a, b) => Number(a) - Number(b));
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
@@ -224,15 +247,18 @@ function NewTemplate({ onCreated }: { onCreated: () => void }) {
     setBusy(true);
     try {
       const payload: any = { name, category, language, kind };
-      if (kind === "text") payload.body = body;
+      // Default values for any {{n}} the recipient may be missing
+      const vars: Record<string, string> = {};
+      for (const k of detectedVars) if ((varDefaults[k] || "").trim()) vars[k] = varDefaults[k].trim();
+      if (Object.keys(vars).length) payload.variables = vars;
+      payload.body = body;
       if (kind === "card") {
-        payload.title = title;
-        if (subtitle) payload.subtitle = subtitle;
-        if (mediaUrl) payload.mediaUrl = mediaUrl;
+        if (headerType === "text" && headerText) payload.headerText = headerText;
+        if (headerType === "image" && mediaUrl) payload.mediaUrl = mediaUrl;
+        if (footer) payload.footer = footer;
         payload.buttons = buttons;
       }
       if (kind === "quick-reply") {
-        payload.body = body;
         payload.buttons = buttons;
       }
       const res = await fetch("/api/templates", {
@@ -272,7 +298,7 @@ function NewTemplate({ onCreated }: { onCreated: () => void }) {
         ))}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 120px", gap: 10, marginBottom: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 12 }}>
         <Field label="Name (a-z, 0-9, _)">
           <input value={name} onChange={(e) => setName(e.target.value.toLowerCase())} placeholder="property_offer_v2" style={input} />
         </Field>
@@ -280,39 +306,77 @@ function NewTemplate({ onCreated }: { onCreated: () => void }) {
           <select value={category} onChange={(e) => setCategory(e.target.value)} style={input}>
             <option>MARKETING</option>
             <option>UTILITY</option>
-            <option>AUTHENTICATION</option>
           </select>
         </Field>
-        <Field label="Lang">
-          <input value={language} onChange={(e) => setLanguage(e.target.value)} style={input} />
+        <Field label="Language">
+          <select value={language} onChange={(e) => setLanguage(e.target.value)} style={input}>
+            {LANGUAGES.map((l) => (
+              <option key={l.code} value={l.code}>{l.label}</option>
+            ))}
+          </select>
         </Field>
       </div>
 
-      {/* Type-specific fields */}
+      {/* Card header (text or image) — shown above the body on WhatsApp */}
       {kind === "card" && (
         <>
-          <Field label="Title / headline">
-            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="List your property with ERE" style={input} />
-          </Field>
-          <Field label="Subtitle (optional)">
-            <input value={subtitle} onChange={(e) => setSubtitle(e.target.value)} style={input} />
-          </Field>
-          <Field label="Header image (optional)">
-            <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 6 }}>
-              <input type="file" accept="image/*" onChange={handleUpload} disabled={uploading} style={{ fontSize: 13 }} />
-              {uploading && <span style={{ fontSize: 12, color: "#9a6700" }}>Uploading…</span>}
-            </div>
-            <input value={mediaUrl} onChange={(e) => setMediaUrl(e.target.value)} placeholder="…or paste an image URL" style={input} />
-            {mediaUrl && !uploading && (
-              <img src={mediaUrl} alt="header preview" style={{ maxHeight: 90, marginTop: 8, borderRadius: 8, border: "1px solid #E4E1DB" }} />
+          <Field label="Header (optional)">
+            <select value={headerType} onChange={(e) => setHeaderType(e.target.value as any)} style={{ ...input, marginBottom: 8 }}>
+              <option value="none">No header</option>
+              <option value="text">Text header</option>
+              <option value="image">Image header</option>
+            </select>
+            {headerType === "text" && (
+              <input value={headerText} onChange={(e) => setHeaderText(e.target.value)} placeholder="Header text (max 60)" maxLength={60} style={input} />
+            )}
+            {headerType === "image" && (
+              <>
+                <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 6 }}>
+                  <input type="file" accept="image/*" onChange={handleUpload} disabled={uploading} style={{ fontSize: 13 }} />
+                  {uploading && <span style={{ fontSize: 12, color: "#9a6700" }}>Uploading…</span>}
+                </div>
+                <input value={mediaUrl} onChange={(e) => setMediaUrl(e.target.value)} placeholder="…or paste an image URL" style={input} />
+                {mediaUrl && !uploading && (
+                  <img src={mediaUrl} alt="header preview" style={{ maxHeight: 90, marginTop: 8, borderRadius: 8, border: "1px solid #E4E1DB" }} />
+                )}
+              </>
             )}
           </Field>
         </>
       )}
-      {(kind === "text" || kind === "quick-reply") && (
-        <Field label={`Body  (use {{1}}, {{2}} for variables)`}>
-          <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={4} placeholder="Hi {{1}}, here's your update…" style={{ ...input, resize: "vertical" }} />
+
+      {/* Body — required for every type */}
+      <Field label={`Body${kind === "card" ? " (max 1024)" : ""}  ·  use {{1}}, {{2}} for variables`}>
+        <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={4} maxLength={kind === "card" ? 1024 : undefined} placeholder="Hi {{1}}, here's your update…" style={{ ...input, resize: "vertical" }} />
+      </Field>
+
+      {/* Footer — card only */}
+      {kind === "card" && (
+        <Field label="Footer (optional, max 60)">
+          <input value={footer} onChange={(e) => setFooter(e.target.value)} placeholder="ERE Homes · Reply STOP to opt out" maxLength={60} style={input} />
         </Field>
+      )}
+
+      {/* Variable defaults — fallback used when the recipient is missing this value */}
+      {detectedVars.length > 0 && (
+        <div style={{ marginTop: 6, marginBottom: 6 }}>
+          <div style={{ fontSize: 12, color: "#6B6862", marginBottom: 6 }}>
+            Default values (used if the recipient is missing one)
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 8 }}>
+            {detectedVars.map((k) => (
+              <div key={k} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 13, color: "#141414", fontWeight: 600, whiteSpace: "nowrap" }}>{`{{${k}}}`}</span>
+                <input
+                  value={varDefaults[k] || ""}
+                  onChange={(e) => setVarDefaults({ ...varDefaults, [k]: e.target.value })}
+                  placeholder={k === "1" ? "e.g. there" : "default"}
+                  style={input}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
       {/* Buttons for card + quick-reply */}

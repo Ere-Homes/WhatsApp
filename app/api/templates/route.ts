@@ -67,12 +67,14 @@ export async function POST(req: NextRequest) {
       if (!b.body) return NextResponse.json({ error: "Body is required for a text template" }, { status: 400 });
       types = { "twilio/text": { body: b.body } };
     } else if (kind === "card") {
+      if (!b.body) return NextResponse.json({ error: "Body is required for a card template" }, { status: 400 });
       const actions = (b.buttons || []).map((x: any) => mapAction(x)).filter(Boolean);
       types = {
-        "twilio/card": {
-          title: b.title || b.body || "",
-          ...(b.subtitle ? { subtitle: b.subtitle } : {}),
+        "whatsapp/card": {
+          body: b.body,
+          ...(b.headerText ? { header_text: b.headerText } : {}),
           ...(b.mediaUrl ? { media: [b.mediaUrl] } : {}),
+          ...(b.footer ? { footer: b.footer } : {}),
           ...(actions.length ? { actions } : {}),
         },
       };

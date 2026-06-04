@@ -67,8 +67,10 @@ function phoneVariants(wa: string): string[] {
 export async function crmContactByPhone(wa: string) {
   const variants = phoneVariants(wa);
   if (!variants.length) return null;
+  // Only the `phone` column is indexed — querying `phone2` too (via OR) forces a
+  // full-table scan on 9.48M rows and times out, so we match on `phone` only.
   const inList = variants.map((v) => `"${v}"`).join(",");
-  const rows = await crmGet(`contacts?or=(phone.in.(${inList}),phone2.in.(${inList}))&select=${CRM_CONTACT_COLS}&limit=1`);
+  const rows = await crmGet(`contacts?phone=in.(${inList})&select=${CRM_CONTACT_COLS}&limit=1`);
   return (rows && rows[0]) || null;
 }
 

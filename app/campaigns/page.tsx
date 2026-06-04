@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { RATES } from "@/lib/rates";
 import { supabaseBrowser } from "@/lib/supabase";
+import { formatPhone } from "@/lib/format";
 
 type Tpl = { sid: string; name: string; status: string; body: string | null; variables: Record<string, string> };
 
@@ -358,7 +359,7 @@ export default function Campaigns() {
       <Section title="3 · Send from">
         <select value={sender} onChange={(e) => setSender(e.target.value)} style={{ ...input, maxWidth: 280 }}>
           {senders.length === 0 && <option value="">(no sender configured)</option>}
-          {senders.map((s) => <option key={s} value={s}>+{s.replace(/^\+/, "")}</option>)}
+          {senders.map((s) => <option key={s} value={s}>{formatPhone(s)}</option>)}
         </select>
 
         <div style={{ fontSize: 13, color: "#6B6862", margin: "14px 0 8px" }}>How established is this number? Sets a safe daily cap so a young number doesn’t get flagged.</div>

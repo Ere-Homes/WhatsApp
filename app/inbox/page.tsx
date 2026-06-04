@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase";
 import { useIsMobile } from "@/lib/useResponsive";
+import { formatPhone } from "@/lib/format";
 
 type Conv = {
   id: string; wa_phone: string; name: string | null; status: string;
@@ -216,7 +217,7 @@ export default function Inbox() {
               <div style={{ padding: 14, borderTop: "1px solid #E4E1DB", background: "#fff", display: "flex", gap: 10, position: "relative", alignItems: "center" }}>
                 {senders.length > 1 && (
                   <select value={sender} onChange={(e) => setSender(e.target.value)} title="Send from" style={{ padding: "11px 8px", border: "1px solid #E4E1DB", borderRadius: 8, fontSize: 13, flexShrink: 0, maxWidth: 150 }}>
-                    {senders.map((s) => <option key={s} value={s}>{s}</option>)}
+                    {senders.map((s) => <option key={s} value={s}>{formatPhone(s)}</option>)}
                   </select>
                 )}
                 <TemplateSender phone={active.wa_phone} from={sender} onSent={() => { loadMsgs(active.id); loadConvs(); }} />

@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabaseBrowser } from "@/lib/supabase";
+import { formatPhone } from "@/lib/format";
 
 export default function Dashboard() {
   const [ins, setIns] = useState<any>(null);
@@ -46,7 +47,7 @@ export default function Dashboard() {
   const attention: { tone: "green" | "amber" | "red"; text: string; href: string; cta: string }[] = [];
   if (unread) attention.push({ tone: "green", text: `${unread} unread lead${unread === 1 ? "" : "s"} waiting for a reply`, href: "/inbox", cta: "Open inbox" });
   if (failed) attention.push({ tone: "red", text: `${failed} message${failed === 1 ? "" : "s"} failed or undelivered (last 7 days)`, href: "/insights", cta: "Review" });
-  qualityWarn.forEach((s) => attention.push({ tone: "amber", text: `Number +${s.sender} quality is ${s.quality} - slow down sending`, href: "/billing", cta: "" }));
+  qualityWarn.forEach((s) => attention.push({ tone: "amber", text: `Number ${formatPhone(s.sender)} quality is ${s.quality} - slow down sending`, href: "/billing", cta: "" }));
   if (pending) attention.push({ tone: "amber", text: `${pending} template${pending === 1 ? "" : "s"} awaiting approval`, href: "/templates", cta: "View" });
 
   return (
@@ -143,7 +144,7 @@ export default function Dashboard() {
                 {health.map((s) => (
                   <div key={s.sender} style={{ padding: "10px 0", borderBottom: "1px solid #F0EEE9" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <span style={{ fontWeight: 600, fontSize: 14 }}>+{s.sender}</span>
+                      <span style={{ fontWeight: 600, fontSize: 14 }}>{formatPhone(s.sender)}</span>
                       <span style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5, color: qualityColor(s.quality), border: `1px solid ${qualityColor(s.quality)}`, borderRadius: 20, padding: "2px 10px" }}>
                         {s.quality || "-"}
                       </span>

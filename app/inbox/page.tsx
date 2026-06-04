@@ -160,24 +160,40 @@ function PushToPipedrive({ conv, lastInbound }: { conv: Conv; lastInbound: strin
     }
   }
   return (
-    <button
-      onClick={push}
-      disabled={state === "busy" || state === "done"}
-      title={err || "Create a Hot lead in Pipedrive"}
-      style={{
-        padding: "8px 14px",
-        background: state === "done" ? "#137333" : "#fff",
-        color: state === "done" ? "#fff" : "#141414",
-        border: "1px solid " + (state === "err" ? "#b00020" : "#E4E1DB"),
-        borderRadius: 8,
-        cursor: "pointer",
-        fontSize: 12,
-        letterSpacing: 0.5,
-        whiteSpace: "nowrap",
-      }}
-    >
-      {state === "busy" ? "Pushing…" : state === "done" ? "✓ In Pipedrive" : state === "err" ? "Retry → Pipedrive" : "→ Pipedrive"}
-    </button>
+    <>
+      <button
+        onClick={push}
+        disabled={state === "busy" || state === "done"}
+        title={err || "Create a Hot lead in Pipedrive"}
+        style={{
+          padding: "8px 14px",
+          background: state === "done" ? "#137333" : "#fff",
+          color: state === "done" ? "#fff" : "#141414",
+          border: "1px solid " + (state === "err" ? "#b00020" : "#E4E1DB"),
+          borderRadius: 8,
+          cursor: "pointer",
+          fontSize: 12,
+          letterSpacing: 0.5,
+          whiteSpace: "nowrap",
+        }}
+      >
+        {state === "busy" ? "Pushing…" : state === "done" ? "✓ In Pipedrive" : state === "err" ? "Retry → Pipedrive" : "→ Pipedrive"}
+      </button>
+
+      {state === "done" && (
+        <div style={{ position: "fixed", top: 60, right: 20, background: "#137333", color: "#fff", padding: "12px 16px", borderRadius: 10, boxShadow: "0 6px 20px rgba(0,0,0,.18)", zIndex: 50, fontSize: 14, maxWidth: 320 }}>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>Pushed to Pipedrive ✓</div>
+          <div style={{ fontSize: 13, opacity: 0.95 }}>Hot lead created.{" "}
+            <a href="https://erehomesrealestatebrokers.pipedrive.com/leads/inbox" target="_blank" rel="noreferrer" style={{ color: "#fff", textDecoration: "underline" }}>Open Leads inbox ↗</a>
+          </div>
+        </div>
+      )}
+      {state === "err" && (
+        <div style={{ position: "fixed", top: 60, right: 20, background: "#b00020", color: "#fff", padding: "12px 16px", borderRadius: 10, boxShadow: "0 6px 20px rgba(0,0,0,.18)", zIndex: 50, fontSize: 13, maxWidth: 320 }}>
+          Pipedrive push failed: {err}
+        </div>
+      )}
+    </>
   );
 }
 

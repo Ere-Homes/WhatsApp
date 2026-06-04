@@ -93,7 +93,7 @@ export async function pushLeadFromWhatsApp(opts: { phone: string; name?: string;
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      title: `${opts.name || phone} — WhatsApp`,
+      title: `${opts.name || phone} - WhatsApp`,
       person_id: person.id,
       label_ids: [LABEL_HOT],
     }),

@@ -152,7 +152,7 @@ export default function Inbox() {
             </div>
           </div>
           {shown.map((c) => (
-            <div key={c.id} onClick={() => open(c)} style={{ padding: "14px 18px", borderBottom: "1px solid #F0EEE9", cursor: "pointer", background: active?.id === c.id ? "#F3F1EC" : "#fff", display: "flex", gap: 10, alignItems: "center" }}>
+            <div key={c.id} onClick={() => open(c)} style={{ padding: "14px 18px", borderBottom: "1px solid #F0EEE9", cursor: "pointer", background: active?.id === c.id ? "#EEEEEE" : "#fff", display: "flex", gap: 10, alignItems: "center" }}>
               {c.unread && <span style={{ width: 9, height: 9, borderRadius: 9, background: "#137333", flexShrink: 0 }} title="Unread" />}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
@@ -376,7 +376,7 @@ function TemplateSender({ phone, from, onSent }: { phone: string; from?: string;
 }
 
 // Shows who this number is, pulled from the ERE CRM (if matched). Gives the
-// agent instant context — community, tier, transaction history — before replying.
+// agent instant context - community, tier, transaction history - before replying.
 function CrmContext({ phone }: { phone: string }) {
   const [c, setC] = useState<any>(undefined); // undefined=loading, null=no match
   useEffect(() => {
@@ -405,13 +405,13 @@ function CrmContext({ phone }: { phone: string }) {
       {c.name && <span style={{ fontWeight: 700, color: "#141414" }}>{c.name}</span>}
       {(c.do_not_call === "Y" || c.do_not_call === true) && <span style={{ color: "#b00020", fontWeight: 600 }}>Do not call</span>}
       {chips.map((x: string, i: number) => (
-        <span key={i} style={{ background: "#F3F1EC", borderRadius: 12, padding: "2px 9px", color: "#3a3a3a" }}>{x}</span>
+        <span key={i} style={{ background: "#EEEEEE", borderRadius: 12, padding: "2px 9px", color: "#3a3a3a" }}>{x}</span>
       ))}
       {chips.length === 0 && !c.name && <span style={{ color: "#9a958c" }}>In CRM (no details)</span>}
     </div>
   );
 }
-const ctxBar: React.CSSProperties = { display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", padding: "8px 18px", borderBottom: "1px solid #F0EEE9", background: "#FBFAF7", fontSize: 12 };
+const ctxBar: React.CSSProperties = { display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", padding: "8px 18px", borderBottom: "1px solid #F0EEE9", background: "#FFFFFF", fontSize: 12 };
 
 // Attach an image or PDF and send it as a media message (within 24h window).
 function AttachMedia({ phone, from, onSent }: { phone: string; from?: string; onSent: () => void }) {

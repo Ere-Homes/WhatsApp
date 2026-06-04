@@ -46,7 +46,7 @@ export default function Dashboard() {
   const attention: { tone: "green" | "amber" | "red"; text: string; href: string; cta: string }[] = [];
   if (unread) attention.push({ tone: "green", text: `${unread} unread lead${unread === 1 ? "" : "s"} waiting for a reply`, href: "/inbox", cta: "Open inbox" });
   if (failed) attention.push({ tone: "red", text: `${failed} message${failed === 1 ? "" : "s"} failed or undelivered (last 7 days)`, href: "/insights", cta: "Review" });
-  qualityWarn.forEach((s) => attention.push({ tone: "amber", text: `Number +${s.sender} quality is ${s.quality} — slow down sending`, href: "/billing", cta: "" }));
+  qualityWarn.forEach((s) => attention.push({ tone: "amber", text: `Number +${s.sender} quality is ${s.quality} - slow down sending`, href: "/billing", cta: "" }));
   if (pending) attention.push({ tone: "amber", text: `${pending} template${pending === 1 ? "" : "s"} awaiting approval`, href: "/templates", cta: "View" });
 
   return (
@@ -60,7 +60,7 @@ export default function Dashboard() {
           {/* Needs attention */}
           <div style={{ background: "#fff", border: "1px solid #E4E1DB", borderRadius: 12, padding: 18, marginBottom: 22 }}>
             <div style={{ fontWeight: 600, marginBottom: attention.length ? 10 : 0 }}>Needs attention</div>
-            {attention.length === 0 && <div style={{ color: "#6B6862", fontSize: 14 }}>You're all caught up — nothing needs action right now.</div>}
+            {attention.length === 0 && <div style={{ color: "#6B6862", fontSize: 14 }}>You're all caught up - nothing needs action right now.</div>}
             {attention.map((a, i) => (
               <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: i < attention.length - 1 ? "1px solid #F0EEE9" : "none" }}>
                 <span style={{ width: 8, height: 8, borderRadius: 8, flexShrink: 0, background: a.tone === "red" ? "#b00020" : a.tone === "amber" ? "#9a6700" : "#137333" }} />
@@ -71,14 +71,14 @@ export default function Dashboard() {
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12, marginBottom: 22 }}>
-            <Stat label="Conversations" value={convs?.length ?? "—"} href="/inbox" />
+            <Stat label="Conversations" value={convs?.length ?? "-"} href="/inbox" />
             <Stat label="Unread" value={unread} href="/inbox" color={unread ? "#137333" : undefined} />
-            <Stat label="Sent · 7d" value={t?.outbound ?? "—"} href="/insights" />
-            <Stat label="Delivery rate" value={t ? `${t.deliveryRate}%` : "—"} href="/insights" />
-            <Stat label="Read rate" value={t ? `${t.readRate}%` : "—"} href="/insights" />
-            <Stat label="Failed · 7d" value={t ? t.failed + t.undelivered : "—"} href="/insights" color={t && t.failed + t.undelivered ? "#b00020" : undefined} />
-            <Stat label="Balance" value={bal ? `${bal.currency} ${parseFloat(bal.balance).toFixed(2)}` : "—"} href="/billing" />
-            <Stat label="Approved templates" value={tpls ? approved : "—"} href="/templates" />
+            <Stat label="Sent · 7d" value={t?.outbound ?? "-"} href="/insights" />
+            <Stat label="Delivery rate" value={t ? `${t.deliveryRate}%` : "-"} href="/insights" />
+            <Stat label="Read rate" value={t ? `${t.readRate}%` : "-"} href="/insights" />
+            <Stat label="Failed · 7d" value={t ? t.failed + t.undelivered : "-"} href="/insights" color={t && t.failed + t.undelivered ? "#b00020" : undefined} />
+            <Stat label="Balance" value={bal ? `${bal.currency} ${parseFloat(bal.balance).toFixed(2)}` : "-"} href="/billing" />
+            <Stat label="Approved templates" value={tpls ? approved : "-"} href="/templates" />
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 16 }}>
@@ -136,7 +136,7 @@ export default function Dashboard() {
               {tpls && tpls.length === 0 && <Empty>No templates yet.</Empty>}
             </Panel>
 
-            {/* WhatsApp number health — Meta-set quality + tier */}
+            {/* WhatsApp number health - Meta-set quality + tier */}
             {health && health.length > 0 && (
               <div style={{ background: "#fff", border: "1px solid #E4E1DB", borderRadius: 12, padding: 18 }}>
                 <div style={{ fontWeight: 600, marginBottom: 8 }}>Number health</div>
@@ -145,11 +145,11 @@ export default function Dashboard() {
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <span style={{ fontWeight: 600, fontSize: 14 }}>+{s.sender}</span>
                       <span style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5, color: qualityColor(s.quality), border: `1px solid ${qualityColor(s.quality)}`, borderRadius: 20, padding: "2px 10px" }}>
-                        {s.quality || "—"}
+                        {s.quality || "-"}
                       </span>
                     </div>
                     <div style={{ fontSize: 12, color: "#6B6862", marginTop: 4 }}>
-                      {s.status && <>{s.status === "ONLINE" ? "Online" : s.status} · </>}Limit: {s.limit || "—"}
+                      {s.status && <>{s.status === "ONLINE" ? "Online" : s.status} · </>}Limit: {s.limit || "-"}
                     </div>
                   </div>
                 ))}

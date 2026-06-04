@@ -23,11 +23,11 @@ function recordValue(rec: any, field: string): string {
   return rec[field] != null ? String(rec[field]) : "";
 }
 // Warm-up profiles. A brand-new WhatsApp sender shouldn't blast its full tier
-// on day one — Meta ramps you (250 -> 1K -> 10K -> 100K) only while quality
+// on day one - Meta ramps you (250 -> 1K -> 10K -> 100K) only while quality
 // stays high. Each profile sets a safe 24h cap and a recommended drip pace.
 const WARMUP = [
   { id: "new", label: "Brand-new", sub: "first few days", cap: 50, batch: 25, interval: 180 },
-  { id: "warming", label: "Warming up", sub: "week 1–2", cap: 250, batch: 50, interval: 120 },
+  { id: "warming", label: "Warming up", sub: "week 1-2", cap: 250, batch: 50, interval: 120 },
   { id: "established", label: "Established", sub: "good quality rating", cap: 1000, batch: 100, interval: 60 },
 ] as const;
 
@@ -71,7 +71,7 @@ export default function Campaigns() {
     });
   }, [source]); // eslint-disable-line
 
-  // Live, approximate segment size — so you can sanity-check the audience
+  // Live, approximate segment size - so you can sanity-check the audience
   // before loading it. Debounced; recomputes whenever filters change.
   useEffect(() => {
     if (source !== "crm") return;
@@ -283,7 +283,7 @@ export default function Campaigns() {
           <option value="">Select an approved template…</option>
           {tpls.map((t) => <option key={t.sid} value={t.sid}>{t.name}</option>)}
         </select>
-        {tpl?.body && <div style={{ marginTop: 10, padding: 12, background: "#F7F5F0", borderRadius: 8, fontSize: 14, whiteSpace: "pre-wrap" }}>{renderLabel(tpl, vars)}</div>}
+        {tpl?.body && <div style={{ marginTop: 10, padding: 12, background: "#F5F5F5", borderRadius: 8, fontSize: 14, whiteSpace: "pre-wrap" }}>{renderLabel(tpl, vars)}</div>}
         {tplVars.length > 0 && (
           <div style={{ marginTop: 12 }}>
             <div style={{ fontSize: 13, color: "#6B6862", marginBottom: 4 }}>Fill each variable with fixed text or a CRM field (personalized per recipient).</div>
@@ -301,7 +301,7 @@ export default function Campaigns() {
               );
             })}
             {Object.values(varMap).some((v) => v !== "fixed") && source !== "crm" && (
-              <div style={{ fontSize: 12, color: "#9a6700", marginTop: 6 }}>CRM fields only fill for recipients loaded from a CRM segment — pasted numbers will use the fallback text.</div>
+              <div style={{ fontSize: 12, color: "#9a6700", marginTop: 6 }}>CRM fields only fill for recipients loaded from a CRM segment - pasted numbers will use the fallback text.</div>
             )}
           </div>
         )}
@@ -343,7 +343,7 @@ export default function Campaigns() {
                 {crmLoading ? "Loading…" : "Load recipients"}
               </button>
             </div>
-            <div style={{ marginTop: 10, fontSize: 13, padding: "8px 12px", background: "#F7F5F0", borderRadius: 8, color: "#3a3a3a" }}>
+            <div style={{ marginTop: 10, fontSize: 13, padding: "8px 12px", background: "#F5F5F5", borderRadius: 8, color: "#3a3a3a" }}>
               {crmMatch == null ? "Counting matching contacts…" : (
                 <><b>~{crmMatch.toLocaleString()}</b> contactable contact{crmMatch === 1 ? "" : "s"} match this segment.{crmMatch > crmLimit && <> You’ll load the first <b>{crmLimit.toLocaleString()}</b>.</>}</>
               )}
@@ -392,7 +392,7 @@ export default function Campaigns() {
 
         {mode === "drip" && (
           <div style={{ marginTop: 12 }}>
-            <div style={{ fontSize: 13, color: "#6B6862", marginBottom: 8 }}>Send a small batch, wait, repeat — the gentle way to protect your number. Pick a pace:</div>
+            <div style={{ fontSize: 13, color: "#6B6862", marginBottom: 8 }}>Send a small batch, wait, repeat - the gentle way to protect your number. Pick a pace:</div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
               {[{ p: 50, m: 120, l: "50 every 2 hours" }, { p: 100, m: 60, l: "100 every hour" }, { p: 25, m: 30, l: "25 every 30 min" }].map((x) => (
                 <button key={x.l} onClick={() => { setPerBatch(x.p); setIntervalMin(x.m); }} style={{ ...pill, ...(perBatch === x.p && intervalMin === x.m ? pillActive : {}) }}>{x.l}</button>
@@ -409,16 +409,16 @@ export default function Campaigns() {
             {drip && (
               <div style={{ marginTop: 10, fontSize: 13, color: drip.fits ? "#137333" : "#b00020", background: drip.fits ? "#e7f4ea" : "#fdecea", padding: 10, borderRadius: 8 }}>
                 {drip.fits
-                  ? `${numbers.length} recipients in ${drip.chunks} batch${drip.chunks === 1 ? "" : "es"} — first batch now, finishes around ${drip.finishLabel}.`
-                  : `Too slow for this list — it would take over 7 days (Twilio's limit). Use a bigger batch or shorter interval.`}
+                  ? `${numbers.length} recipients in ${drip.chunks} batch${drip.chunks === 1 ? "" : "es"} - first batch now, finishes around ${drip.finishLabel}.`
+                  : `Too slow for this list - it would take over 7 days (Twilio's limit). Use a bigger batch or shorter interval.`}
               </div>
             )}
           </div>
         )}
       </Section>
 
-      {/* Compliance — keeps the number's quality rating healthy */}
-      <div style={{ background: "#FBFAF7", border: "1px solid #E4E1DB", borderRadius: 12, padding: 16, marginBottom: 14 }}>
+      {/* Compliance - keeps the number's quality rating healthy */}
+      <div style={{ background: "#FFFFFF", border: "1px solid #E4E1DB", borderRadius: 12, padding: 16, marginBottom: 14 }}>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Before you send</div>
         <label style={{ fontSize: 14, display: "flex", gap: 8, alignItems: "flex-start", cursor: "pointer", marginBottom: 10 }}>
           <input type="checkbox" checked={optIn} onChange={(e) => setOptIn(e.target.checked)} style={{ marginTop: 3 }} />
@@ -436,7 +436,7 @@ export default function Campaigns() {
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, marginTop: 6 }}>
           <span style={{ color: "#6B6862" }}>Est. cost floor (Twilio fee)</span><b>${estUsd.toFixed(2)}</b>
         </div>
-        <div style={{ fontSize: 11, color: "#9a958c", marginTop: 6 }}>Plus Meta marketing rate per message (country-specific). Outside the 24h window, template sending is required — which this uses.</div>
+        <div style={{ fontSize: 11, color: "#9a958c", marginTop: 6 }}>Plus Meta marketing rate per message (country-specific). Outside the 24h window, template sending is required - which this uses.</div>
       </div>
 
       {err && <div style={errBox}>{err}</div>}

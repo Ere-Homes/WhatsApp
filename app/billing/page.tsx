@@ -65,7 +65,7 @@ export default function Billing() {
             <div>
               <div style={{ fontSize: 12, letterSpacing: 1, textTransform: "uppercase", color: "#cfccc6" }}>Twilio balance remaining</div>
               <div style={{ fontSize: 38, fontFamily: "Georgia, serif", marginTop: 6 }}>
-                {data.balance ? fmt(parseFloat(data.balance.balance)) : "—"}
+                {data.balance ? fmt(parseFloat(data.balance.balance)) : "-"}
               </div>
               {cur !== "USD" && data.balance && <div style={{ fontSize: 12, color: "#9a958c", marginTop: 2 }}>${parseFloat(data.balance.balance).toFixed(2)} USD</div>}
             </div>
@@ -111,7 +111,7 @@ export default function Billing() {
               </div>
             ))}
             <div style={{ fontSize: 11, color: "#9a958c", marginTop: 10 }}>
-              Reference only. Marketing is country-specific (UAE not published) — set it in <code>lib/rates.ts</code>.
+              Reference only. Marketing is country-specific (UAE not published) - set it in <code>lib/rates.ts</code>.
             </div>
           </div>
 

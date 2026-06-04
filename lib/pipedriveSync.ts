@@ -3,7 +3,7 @@ import { findPersonByPhone, upsertWhatsAppNote } from "./pipedrive";
 
 // Keep a running WhatsApp transcript note on the Pipedrive person for this
 // conversation. Best-effort: never throws, never blocks the caller's result.
-// Does NOT create a person — only logs to a person that already exists or is
+// Does NOT create a person - only logs to a person that already exists or is
 // already linked (linking happens on manual push or when a status is set).
 export async function logConversationToPipedrive(conversationId: string) {
   try {
@@ -14,7 +14,7 @@ export async function logConversationToPipedrive(conversationId: string) {
     let personId: number | null = conv.pipedrive_person_id ? Number(conv.pipedrive_person_id) : null;
     if (!personId) {
       const person = await findPersonByPhone(`+${conv.wa_phone}`);
-      if (!person) return; // not in Pipedrive yet — nothing to attach to
+      if (!person) return; // not in Pipedrive yet - nothing to attach to
       personId = person.id;
       await db.from("conversations").update({ pipedrive_person_id: String(personId) }).eq("id", conversationId);
     }

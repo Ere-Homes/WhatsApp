@@ -145,7 +145,7 @@ export default function Templates() {
                 <span style={{ color: "#9a958c", fontSize: 12, transform: open.has(t.sid) ? "rotate(90deg)" : "none", transition: "transform .15s", flexShrink: 0 }}>▶</span>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontWeight: 600, fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
-                  {open.has(t.sid) && <div style={{ fontSize: 12, color: "#9a958c", marginTop: 2 }}>{t.sid} · {t.type || "—"} · {t.language || "—"}</div>}
+                  {open.has(t.sid) && <div style={{ fontSize: 12, color: "#9a958c", marginTop: 2 }}>{t.sid} · {t.type || "-"} · {t.language || "-"}</div>}
                 </div>
               </div>
               <span
@@ -171,7 +171,7 @@ export default function Templates() {
                   <div style={{ fontSize: 12, color: "#6B6862", marginTop: 8 }}>Category: {t.category}</div>
                 )}
                 {t.body && (
-                  <div style={{ marginTop: 10, padding: 12, background: "#F7F5F0", borderRadius: 8, fontSize: 14, whiteSpace: "pre-wrap" }}>
+                  <div style={{ marginTop: 10, padding: 12, background: "#F5F5F5", borderRadius: 8, fontSize: 14, whiteSpace: "pre-wrap" }}>
                     {t.body}
                   </div>
                 )}
@@ -249,7 +249,7 @@ function AutoReplyConfig({ buttons }: { buttons: string[] }) {
   function set(trigger: string, patch: any) { setRules({ ...rules, [trigger]: { ...rules[trigger], ...patch } }); }
 
   return (
-    <div style={{ marginTop: 12, padding: 14, background: "#FBFAF7", border: "1px solid #F0EEE9", borderRadius: 10 }}>
+    <div style={{ marginTop: 12, padding: 14, background: "#FFFFFF", border: "1px solid #F0EEE9", borderRadius: 10 }}>
       <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Auto-replies for this template’s buttons</div>
       <div style={{ fontSize: 12, color: "#6B6862", marginBottom: 10 }}>When a contact taps a button, the app sends the reply (and optionally creates a Pipedrive lead).</div>
       {loading && <div style={{ color: "#6B6862", fontSize: 13 }}>Loading…</div>}
@@ -370,7 +370,7 @@ function NewTemplate({ onCreated, seed }: { onCreated: () => void; seed?: any })
       if (data.approvalError) {
         setMsg(`Created ${data.sid}, but approval submit failed: ${data.approvalError}`);
       } else {
-        setMsg(`Submitted "${data.name}" — status: ${data.status}. Refreshing…`);
+        setMsg(`Submitted "${data.name}" - status: ${data.status}. Refreshing…`);
         setTimeout(onCreated, 900);
       }
     } catch (e: any) {
@@ -381,11 +381,12 @@ function NewTemplate({ onCreated, seed }: { onCreated: () => void; seed?: any })
   }
 
   return (
-    <div id="tpl-form-top" style={{ ...card, marginBottom: 18, background: "#FBFAF7", scrollMarginTop: 12 }}>
-      <div style={{ fontWeight: 600, marginBottom: 14 }}>{seed ? "Duplicate template — edit, then submit" : "New WhatsApp template"}</div>
+    <div id="tpl-form-top" style={{ ...card, marginBottom: 18, background: "#FFFFFF", scrollMarginTop: 12, display: "flex", gap: 22, alignItems: "flex-start", flexWrap: "wrap" }}>
+      <div style={{ flex: "1 1 440px", minWidth: 0 }}>
+      <div style={{ fontWeight: 600, marginBottom: 14 }}>{seed ? "Duplicate template - edit, then submit" : "New WhatsApp template"}</div>
       {seed && kind === "card" && (
         <div style={{ fontSize: 12, color: "#9a6700", background: "#FFF8E6", border: "1px solid #F0E2B8", borderRadius: 8, padding: "8px 12px", marginBottom: 12 }}>
-          Card header image, footer and buttons aren’t carried over — re-add them below before submitting.
+          Card header image, footer and buttons aren’t carried over - re-add them below before submitting.
         </div>
       )}
 
@@ -421,7 +422,7 @@ function NewTemplate({ onCreated, seed }: { onCreated: () => void; seed?: any })
         </Field>
       </div>
 
-      {/* Card header (text or image) — shown above the body on WhatsApp */}
+      {/* Card header (text or image) - shown above the body on WhatsApp */}
       {kind === "card" && (
         <>
           <Field label="Header (optional)">
@@ -449,19 +450,19 @@ function NewTemplate({ onCreated, seed }: { onCreated: () => void; seed?: any })
         </>
       )}
 
-      {/* Body — required for every type */}
+      {/* Body - required for every type */}
       <Field label={`Body${kind === "card" ? " (max 1024)" : ""}  ·  use {{1}}, {{2}} for variables`}>
         <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={4} maxLength={kind === "card" ? 1024 : undefined} placeholder="Hi {{1}}, here's your update…" style={{ ...input, resize: "vertical" }} />
       </Field>
 
-      {/* Footer — card only */}
+      {/* Footer - card only */}
       {kind === "card" && (
         <Field label="Footer (optional, max 60)">
           <input value={footer} onChange={(e) => setFooter(e.target.value)} placeholder="ERE Homes · Reply STOP to opt out" maxLength={60} style={input} />
         </Field>
       )}
 
-      {/* Variable defaults — fallback used when the recipient is missing this value */}
+      {/* Variable defaults - fallback used when the recipient is missing this value */}
       {detectedVars.length > 0 && (
         <div style={{ marginTop: 6, marginBottom: 6 }}>
           <div style={{ fontSize: 12, color: "#6B6862", marginBottom: 6 }}>
@@ -529,6 +530,46 @@ function NewTemplate({ onCreated, seed }: { onCreated: () => void; seed?: any })
         <span style={{ fontSize: 12, color: "#9a958c", marginLeft: 12 }}>
           Goes to Meta for review; status shows here as pending → approved/rejected.
         </span>
+      </div>
+      </div>
+
+      <PhonePreview kind={kind} headerType={headerType} headerText={headerText} mediaUrl={mediaUrl} body={body} footer={footer} buttons={buttons} vars={varDefaults} />
+    </div>
+  );
+}
+
+// Live WhatsApp-style phone mockup of the template being built.
+function PhonePreview({ kind, headerType, headerText, mediaUrl, body, footer, buttons, vars }: {
+  kind: string; headerType: string; headerText: string; mediaUrl: string; body: string; footer: string; buttons: Btn[]; vars: Record<string, string>;
+}) {
+  const render = (text: string) => (text || "").replace(/\{\{(\d+)\}\}/g, (_, n) => vars[n] || `{{${n}}}`);
+  const btns = (kind === "card" || kind === "quick-reply") ? buttons.filter((b) => b.title) : [];
+  return (
+    <div style={{ flex: "0 0 290px", position: "sticky", top: 12, margin: "0 auto" }}>
+      <div style={{ fontSize: 12, color: "#6B6862", marginBottom: 8, textAlign: "center" }}>Preview</div>
+      <div style={{ width: 290, border: "9px solid #111", borderRadius: 34, overflow: "hidden", boxShadow: "0 12px 30px rgba(0,0,0,.18)" }}>
+        <div style={{ background: "#075E54", color: "#fff", padding: "12px 14px", display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ width: 30, height: 30, borderRadius: 30, background: "#cfe9e2", flexShrink: 0 }} />
+          <div><div style={{ fontSize: 13, fontWeight: 600 }}>ERE Homes</div><div style={{ fontSize: 10, opacity: 0.85 }}>online</div></div>
+        </div>
+        <div style={{ background: "#E5DDD5", padding: 12, minHeight: 280 }}>
+          <div style={{ background: "#fff", borderRadius: 10, padding: 9, maxWidth: "90%", boxShadow: "0 1px 1px rgba(0,0,0,.13)", fontSize: 13, lineHeight: 1.45 }}>
+            {kind === "card" && headerType === "image" && mediaUrl && <img src={mediaUrl} alt="" style={{ width: "100%", borderRadius: 6, marginBottom: 6, display: "block" }} />}
+            {kind === "card" && headerType === "text" && headerText && <div style={{ fontWeight: 700, marginBottom: 4 }}>{render(headerText)}</div>}
+            <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{render(body) || <span style={{ color: "#9a958c" }}>Your message will appear here…</span>}</div>
+            {kind === "card" && footer && <div style={{ fontSize: 11, color: "#8a8d91", marginTop: 6 }}>{render(footer)}</div>}
+            <div style={{ fontSize: 10, color: "#8a8d91", textAlign: "right", marginTop: 4 }}>12:30 PM</div>
+          </div>
+          {btns.length > 0 && (
+            <div style={{ maxWidth: "90%", marginTop: 4 }}>
+              {btns.map((b, i) => (
+                <div key={i} style={{ background: "#fff", color: "#0a84ff", textAlign: "center", padding: "10px", borderRadius: 8, fontSize: 13, fontWeight: 500, marginTop: 4, boxShadow: "0 1px 1px rgba(0,0,0,.13)" }}>
+                  {b.title}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

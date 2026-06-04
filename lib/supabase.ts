@@ -15,7 +15,7 @@ export const supabaseBrowser = () =>
     clean(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) || "placeholder"
   );
 
-// Server/service client (writes from API routes only — never import in client code)
+// Server/service client (writes from API routes only - never import in client code)
 export const supabaseAdmin = () =>
   createClient(
     URL,

@@ -110,11 +110,11 @@ function Recipients({ campaignId }: { campaignId: string }) {
   return (
     <div style={{ marginTop: 12, borderTop: "1px solid #F0EEE9", paddingTop: 10, maxHeight: 320, overflowY: "auto" }}>
       {list.map((r, i) => (
-        <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: "1px solid #F7F5F0", fontSize: 13 }}>
+        <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: "1px solid #F5F5F5", fontSize: 13 }}>
           <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {r.conversation?.name || (r.conversation?.wa_phone ? "+" + r.conversation.wa_phone : "—")}
+            {r.conversation?.name || (r.conversation?.wa_phone ? "+" + r.conversation.wa_phone : "-")}
           </span>
-          <span style={{ ...statusPill(r.status), flexShrink: 0, marginLeft: 10 }}>{r.status || "—"}</span>
+          <span style={{ ...statusPill(r.status), flexShrink: 0, marginLeft: 10 }}>{r.status || "-"}</span>
         </div>
       ))}
     </div>

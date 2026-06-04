@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
 
     const name = conv.name || `+${conv.wa_phone}`;
     const person = await findOrCreatePersonByPhone(`+${conv.wa_phone}`, name);
-    const leadId = await ensureLead(person.id, `${name} — WhatsApp`, conv.pipedrive_lead_id);
+    const leadId = await ensureLead(person.id, `${name} - WhatsApp`, conv.pipedrive_lead_id);
 
     // Map our lead temperature to a Pipedrive lead label by name (Hot/Warm/Cold).
     // 'new' clears the label; won/lost have no default label so they're left as-is.

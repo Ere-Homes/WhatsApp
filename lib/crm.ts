@@ -37,7 +37,7 @@ function contactableParts(filters: Record<string, string>) {
 }
 
 // Normalize a messy CRM phone to E.164 (UAE-centric). CRM stores things like
-// ".0502077152" / "0502077152" / "971..." — campaigns need a real + number.
+// ".0502077152" / "0502077152" / "971..." - campaigns need a real + number.
 function toE164(raw: string): string {
   let d = (raw || "").replace(/[^0-9]/g, "");
   if (!d) return "";
@@ -89,7 +89,7 @@ function phoneVariants(wa: string): string[] {
 export async function crmContactByPhone(wa: string) {
   const variants = phoneVariants(wa);
   if (!variants.length) return null;
-  // Only the `phone` column is indexed — querying `phone2` too (via OR) forces a
+  // Only the `phone` column is indexed - querying `phone2` too (via OR) forces a
   // full-table scan on 9.48M rows and times out, so we match on `phone` only.
   const inList = variants.map((v) => `"${v}"`).join(",");
   const rows = await crmGet(`contacts?phone=in.(${inList})&select=${CRM_CONTACT_COLS}&limit=1`);

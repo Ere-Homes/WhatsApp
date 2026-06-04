@@ -9,7 +9,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         style={{
           margin: 0,
           fontFamily: "Arial, Helvetica, sans-serif",
-          background: "#ECEAE5",
+          background: "#F5F5F5",
           color: "#1F1C17",
           height: "100vh",
           display: "flex",

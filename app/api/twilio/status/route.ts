@@ -4,7 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Twilio StatusCallback — fires as an outbound message moves through
+// Twilio StatusCallback - fires as an outbound message moves through
 // queued -> sent -> delivered -> read (or failed/undelivered).
 // Reachable from Twilio via the Vercel automation-bypass query param.
 export async function POST(req: NextRequest) {
@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
       }
     }
   } catch {
-    // never fail the callback — Twilio would just retry
+    // never fail the callback - Twilio would just retry
   }
   return new NextResponse(null, { status: 204 });
 }

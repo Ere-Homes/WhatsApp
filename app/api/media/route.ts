@@ -5,7 +5,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // Authenticated proxy for inbound Twilio media. Twilio media URLs require
-// Basic auth to fetch, so the browser can't load them directly — this streams
+// Basic auth to fetch, so the browser can't load them directly - this streams
 // them through with credentials. Only proxies api.twilio.com URLs (no SSRF).
 export async function GET(req: NextRequest) {
   const url = req.nextUrl.searchParams.get("url") || "";

@@ -12,7 +12,7 @@ export const TWILIO_ERRORS: Record<string, string> = {
   // --- Number / permission issues ---
   "21211": "Invalid 'To' phone number",
   "21408": "Permission to send to this country/region not enabled",
-  "21610": "Recipient replied STOP — unsubscribed",
+  "21610": "Recipient replied STOP - unsubscribed",
   "21612": "Cannot route a message to this number",
   "21614": "'To' number is not a valid mobile number",
 
@@ -26,9 +26,9 @@ export const TWILIO_ERRORS: Record<string, string> = {
   "63013": "Message blocked by WhatsApp policy",
   "63014": "Recipient blocked your WhatsApp number",
   "63015": "Sandbox: recipient hasn't joined the WhatsApp sandbox",
-  "63016": "Outside the 24-hour window — must use an approved template",
+  "63016": "Outside the 24-hour window - must use an approved template",
   "63017": "This channel doesn't support the media you sent",
-  "63018": "Rate limit exceeded — too many messages too fast",
+  "63018": "Rate limit exceeded - too many messages too fast",
   "63021": "Channel rejected the content (invalid/blocked)",
   "63022": "Invalid WhatsApp sender (vname) certificate",
   "63024": "Invalid message or template parameter",

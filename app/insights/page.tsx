@@ -62,7 +62,7 @@ export default function Insights() {
         <>
           {t.capped && (
             <div style={{ fontSize: 12, color: "#9a6700", marginBottom: 12 }}>
-              Result capped — showing the most recent pages only. Narrow the range for full coverage.
+              Result capped - showing the most recent pages only. Narrow the range for full coverage.
             </div>
           )}
 
@@ -76,7 +76,7 @@ export default function Insights() {
             <Card label="Failed / undeliv." value={t.failed + t.undelivered} sub={`${t.failRate}% of outbound`} color={t.failed + t.undelivered ? "#b00020" : undefined} />
           </div>
 
-          {/* Delivery breakdown — the funnel from sent to read */}
+          {/* Delivery breakdown - the funnel from sent to read */}
           <Section title="Delivery breakdown">
             {(() => {
               const rows = [
@@ -90,7 +90,7 @@ export default function Insights() {
               return rows.map((r) => (
                 <div key={r.label} style={{ display: "flex", alignItems: "center", gap: 12, padding: "7px 0" }}>
                   <span style={{ width: 150, flexShrink: 0, fontSize: 13, color: "#3a3a3a" }}>{r.label}</span>
-                  <div style={{ flex: 1, background: "#F3F1EC", borderRadius: 6, height: 22, overflow: "hidden" }}>
+                  <div style={{ flex: 1, background: "#EEEEEE", borderRadius: 6, height: 22, overflow: "hidden" }}>
                     <div style={{ width: `${(r.n / max) * 100}%`, height: "100%", background: r.c, minWidth: r.n ? 3 : 0, borderRadius: 6 }} />
                   </div>
                   <span style={{ width: 56, textAlign: "right", fontWeight: 600, fontSize: 14 }}>{r.n}</span>
@@ -136,13 +136,13 @@ export default function Insights() {
                 <tbody>
                   {data!.logs.map((m) => (
                     <tr key={m.sid} style={{ borderBottom: "1px solid #F0EEE9" }}>
-                      <td style={td}>{m.date ? new Date(m.date).toLocaleString() : "—"}</td>
+                      <td style={td}>{m.date ? new Date(m.date).toLocaleString() : "-"}</td>
                       <td style={td}>{m.direction?.startsWith("outbound") ? "→" : "←"}</td>
                       <td style={td}>{m.direction?.startsWith("outbound") ? m.to : m.from}</td>
                       <td style={{ ...td, color: STATUS_COLOR[m.status] || "#1F1C17" }}>{m.status}</td>
-                      <td style={{ ...td, color: m.error_code ? "#b00020" : "#cfccc6" }} title={m.error_code ? errorCause(m.error_code) : ""}>{m.error_code || "—"}</td>
+                      <td style={{ ...td, color: m.error_code ? "#b00020" : "#cfccc6" }} title={m.error_code ? errorCause(m.error_code) : ""}>{m.error_code || "-"}</td>
                       <td style={{ ...td, maxWidth: 320, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.body}</td>
-                      <td style={td}>{m.price || "—"}</td>
+                      <td style={td}>{m.price || "-"}</td>
                     </tr>
                   ))}
                 </tbody>

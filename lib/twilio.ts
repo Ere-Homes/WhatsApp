@@ -60,7 +60,7 @@ function statusCallbackUrl() {
   return `${base}/api/twilio/status${bypass ? `?x-vercel-protection-bypass=${bypass}&x-vercel-set-bypass-cookie=true` : ""}`;
 }
 
-// Messaging Service SID — required for Twilio's native scheduled sends.
+// Messaging Service SID - required for Twilio's native scheduled sends.
 const MESSAGING_SERVICE_SID = () => cleanEnv(process.env.TWILIO_MESSAGING_SERVICE_SID);
 
 // Available WhatsApp sender numbers. Comma-separated TWILIO_WHATSAPP_SENDERS

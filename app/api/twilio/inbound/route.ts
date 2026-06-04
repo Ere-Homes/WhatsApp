@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
 
   const text = body.trim().toLowerCase();
 
-  // Opt-out safety net — STOP/Unsubscribe etc. ALWAYS blacklist, rule or not.
+  // Opt-out safety net - STOP/Unsubscribe etc. ALWAYS blacklist, rule or not.
   const OPT_OUT = ["stop", "unsubscribe", "unsub", "cancel", "stop promotions", "opt out", "optout", "remove me"];
   if (OPT_OUT.includes(text)) {
     await db.from("conversations").update({ status: "blocked" }).eq("id", conv!.id);

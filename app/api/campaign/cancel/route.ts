@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
         await db.from("messages").update({ status: "canceled" }).eq("id", m.id);
         canceled++;
       } catch {
-        // Twilio refuses if it already sent — leave that message as-is.
+        // Twilio refuses if it already sent - leave that message as-is.
         alreadyGone++;
       }
     }

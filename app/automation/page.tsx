@@ -93,7 +93,7 @@ export default function Automation() {
 function RuleForm({ rule, onCancel, onSave }: { rule: Rule; onCancel: () => void; onSave: (r: Rule) => void }) {
   const [r, setR] = useState<Rule>({ ...rule, reply: rule.reply || "" });
   return (
-    <div style={{ ...card, background: "#FBFAF7", marginBottom: 16 }}>
+    <div style={{ ...card, background: "#FFFFFF", marginBottom: 16 }}>
       <div style={{ fontWeight: 600, marginBottom: 12 }}>{rule.id ? "Edit rule" : "New rule"}</div>
       <label style={lbl}>Trigger (button text / keyword)</label>
       <input value={r.trigger} onChange={(e) => setR({ ...r, trigger: e.target.value })} placeholder="e.g. MANAGE" style={input} />

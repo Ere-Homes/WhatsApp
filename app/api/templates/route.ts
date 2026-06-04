@@ -19,7 +19,7 @@ export async function GET() {
         const types = c.types || {};
         const typeKey = Object.keys(types)[0] || null;
         const actions = (typeKey ? types[typeKey]?.actions : null) || [];
-        // Quick-reply button titles — these become the tappable keyword triggers
+        // Quick-reply button titles - these become the tappable keyword triggers
         const replyButtons = actions
           .filter((a: any) => (a?.type || "").toUpperCase() === "QUICK_REPLY")
           .map((a: any) => a.title)

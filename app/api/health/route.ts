@@ -19,7 +19,7 @@ export async function GET() {
     }));
     return NextResponse.json({ senders });
   } catch (e: any) {
-    // Degrade gracefully — the dashboard just hides the panel if this fails.
+    // Degrade gracefully - the dashboard just hides the panel if this fails.
     return NextResponse.json({ senders: [], error: e.message || "Unavailable" });
   }
 }

@@ -291,17 +291,24 @@ type Btn = {
 };
 
 function NewTemplate({ onCreated, seed }: { onCreated: () => void; seed?: any }) {
-  const [kind, setKind] = useState<"text" | "card" | "quick-reply">(seed?.kind ?? "text");
+  // Fresh template starts from a ready scaffold: card + image header + 3 buttons.
+  // A duplicate (seed) keeps the source template's values instead.
+  const DEFAULT_BUTTONS: Btn[] = [
+    { type: "quick-reply", title: "" },
+    { type: "quick-reply", title: "" },
+    { type: "quick-reply", title: "" },
+  ];
+  const [kind, setKind] = useState<"text" | "card" | "quick-reply">(seed?.kind ?? "card");
   const [name, setName] = useState(seed?.name ?? "");
   const [category, setCategory] = useState(seed?.category ?? "MARKETING");
   const [language, setLanguage] = useState(seed?.language ?? "en");
   const [body, setBody] = useState(seed?.body ?? "");
-  const [headerType, setHeaderType] = useState<"none" | "text" | "image">("none");
+  const [headerType, setHeaderType] = useState<"none" | "text" | "image">(seed ? "none" : "image");
   const [headerText, setHeaderText] = useState("");
   const [footer, setFooter] = useState("");
   const [mediaUrl, setMediaUrl] = useState("");
   const [uploading, setUploading] = useState(false);
-  const [buttons, setButtons] = useState<Btn[]>(seed?.buttons ?? []);
+  const [buttons, setButtons] = useState<Btn[]>(seed?.buttons ?? DEFAULT_BUTTONS);
   const [varDefaults, setVarDefaults] = useState<Record<string, string>>(seed?.varDefaults ?? {});
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -331,10 +338,10 @@ function NewTemplate({ onCreated, seed }: { onCreated: () => void; seed?: any })
     }
   }
 
-  const maxButtons = kind === "quick-reply" ? 3 : 2;
+  const maxButtons = 3;
   function addButton() {
     if (buttons.length >= maxButtons) return;
-    setButtons([...buttons, { type: kind === "quick-reply" ? "quick-reply" : "url", title: "" }]);
+    setButtons([...buttons, { type: "quick-reply", title: "" }]);
   }
   function setBtn(i: number, patch: Partial<Btn>) {
     setButtons(buttons.map((b, idx) => (idx === i ? { ...b, ...patch } : b)));
@@ -489,7 +496,7 @@ function NewTemplate({ onCreated, seed }: { onCreated: () => void; seed?: any })
         <div style={{ marginTop: 6 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
             <span style={{ fontSize: 12, color: "#6B6862" }}>
-              Buttons {kind === "quick-reply" ? "(quick replies, up to 3)" : "(up to 2: link or call)"}
+              Buttons {kind === "quick-reply" ? "(quick replies, up to 3)" : "(up to 3 reply, or 2 link/call)"}
             </span>
             <button onClick={addButton} disabled={buttons.length >= maxButtons} style={{ ...pill, padding: "4px 12px" }}>+ Add</button>
           </div>

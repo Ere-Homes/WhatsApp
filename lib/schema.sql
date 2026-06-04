@@ -32,6 +32,17 @@ create table if not exists messages (
 create index if not exists idx_messages_conversation on messages(conversation, created_at);
 create index if not exists idx_conversations_last_at on conversations(last_at desc);
 
+-- Button / keyword auto-reply rules (managed in /automation)
+create table if not exists auto_replies (
+  id             uuid primary key default gen_random_uuid(),
+  trigger        text not null,                  -- button text / keyword (case-insensitive)
+  reply          text,                           -- auto-reply message (optional)
+  block          boolean not null default false, -- mark conversation blocked (opt-out)
+  push_pipedrive boolean not null default false, -- create a Hot lead in Pipedrive
+  enabled        boolean not null default true,
+  created_at     timestamptz not null default now()
+);
+
 -- Realtime for the inbox UI
 alter publication supabase_realtime add table messages;
 alter publication supabase_realtime add table conversations;

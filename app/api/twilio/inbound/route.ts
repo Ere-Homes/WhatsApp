@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { sendWhatsApp } from "@/lib/twilio";
+import { pushLeadFromWhatsApp } from "@/lib/pipedrive";
 
 // Twilio posts incoming WhatsApp here (form-encoded).
 // NOTE: only switch Twilio's inbound webhook to this once you retire Ulgebra inbound.
@@ -28,22 +29,34 @@ export async function POST(req: NextRequest) {
   // mark the conversation unread + last message inbound
   await db.from("conversations").update({ unread: true, last_direction: "in", last_status: "received" }).eq("id", conv!.id);
 
-  // simple keyword automation (this is the part Pipedrive couldn't do)
-  const text = body.trim().toUpperCase();
-  if (text === "STOP") {
-    await db.from("conversations").update({ status: "blocked" }).eq("id", conv!.id);
-  } else if (text === "MANAGE") {
-    const reply =
-      "Great. Here is how ERE Property Management works:\n\n" +
-      "Silver 2% a year: marketing, tenant sourcing and screening, contract and Ejari, rent collection, renewals.\n" +
-      "Gold 5% a year: everything in Silver, plus a dedicated manager, inspections, maintenance coordination, vacant-home checks, and owner support.\n\n" +
-      "Promo rates hold until June 6.\n\n" +
-      "What is the property and area? Reply here and we will send a tailored quote, or share a number and we will call you.";
-    try {
-      const tw = await sendWhatsApp(from, reply);
-      await db.from("messages").insert({ conversation: conv!.id, direction: "out", body: reply, status: tw.status, twilio_sid: tw.sid });
-    } catch { /* within-24h reply may fail if window closed; ignore for prototype */ }
-  }
+  // Button / keyword auto-reply rules (managed in /automation). Match the
+  // tapped button text or typed keyword to an enabled rule, case-insensitive.
+  const text = body.trim().toLowerCase();
+  try {
+    const { data: rules } = await db.from("auto_replies").select("*").eq("enabled", true);
+    const rule = (rules || []).find((r: any) => (r.trigger || "").trim().toLowerCase() === text);
+    if (rule) {
+      if (rule.block) {
+        await db.from("conversations").update({ status: "blocked" }).eq("id", conv!.id);
+      }
+      if (rule.reply) {
+        try {
+          const tw = await sendWhatsApp(from, rule.reply);
+          await db.from("messages").insert({ conversation: conv!.id, direction: "out", body: rule.reply, status: tw.status, twilio_sid: tw.sid });
+          await db.from("conversations").update({ last_direction: "out", last_status: tw.status, last_body: rule.reply }).eq("id", conv!.id);
+        } catch { /* 24h window may be closed; ignore */ }
+      }
+      if (rule.push_pipedrive) {
+        try {
+          await pushLeadFromWhatsApp({
+            phone: from,
+            name: profileName || undefined,
+            note: `Auto-pushed from ERE WhatsApp (tapped "${body.trim()}").`,
+          });
+        } catch { /* don't fail the webhook on Pipedrive errors */ }
+      }
+    }
+  } catch { /* never fail the inbound webhook */ }
 
   // empty TwiML 200 so Twilio is happy
   return new NextResponse("<Response></Response>", { headers: { "Content-Type": "text/xml" } });

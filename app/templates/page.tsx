@@ -291,24 +291,28 @@ type Btn = {
 };
 
 function NewTemplate({ onCreated, seed }: { onCreated: () => void; seed?: any }) {
-  // Fresh template starts from a ready scaffold: card + image header + 3 buttons.
-  // A duplicate (seed) keeps the source template's values instead.
+  // Card templates start from a ready scaffold: image header + 3 buttons.
+  // (Applies to both a brand-new card and a duplicated card, since header/
+  // buttons aren't carried over in the list data.) Quick-reply keeps its
+  // copied buttons; text gets none.
   const DEFAULT_BUTTONS: Btn[] = [
     { type: "quick-reply", title: "" },
     { type: "quick-reply", title: "" },
     { type: "quick-reply", title: "" },
   ];
-  const [kind, setKind] = useState<"text" | "card" | "quick-reply">(seed?.kind ?? "card");
+  const initialKind: "text" | "card" | "quick-reply" = seed?.kind ?? "card";
+  const isBtnKind = initialKind === "card" || initialKind === "quick-reply";
+  const [kind, setKind] = useState<"text" | "card" | "quick-reply">(initialKind);
   const [name, setName] = useState(seed?.name ?? "");
   const [category, setCategory] = useState(seed?.category ?? "MARKETING");
   const [language, setLanguage] = useState(seed?.language ?? "en");
   const [body, setBody] = useState(seed?.body ?? "");
-  const [headerType, setHeaderType] = useState<"none" | "text" | "image">(seed ? "none" : "image");
+  const [headerType, setHeaderType] = useState<"none" | "text" | "image">(initialKind === "card" ? "image" : "none");
   const [headerText, setHeaderText] = useState("");
   const [footer, setFooter] = useState("");
   const [mediaUrl, setMediaUrl] = useState("");
   const [uploading, setUploading] = useState(false);
-  const [buttons, setButtons] = useState<Btn[]>(seed?.buttons ?? DEFAULT_BUTTONS);
+  const [buttons, setButtons] = useState<Btn[]>(seed?.buttons?.length ? seed.buttons : (isBtnKind ? DEFAULT_BUTTONS : []));
   const [varDefaults, setVarDefaults] = useState<Record<string, string>>(seed?.varDefaults ?? {});
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);

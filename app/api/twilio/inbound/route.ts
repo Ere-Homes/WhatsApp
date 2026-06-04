@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { sendWhatsApp } from "@/lib/twilio";
 import { pushLeadFromWhatsApp } from "@/lib/pipedrive";
+import { logConversationToPipedrive } from "@/lib/pipedriveSync";
 
 // Twilio posts incoming WhatsApp here (form-encoded).
 // NOTE: only switch Twilio's inbound webhook to this once you retire Ulgebra inbound.
@@ -67,6 +68,9 @@ export async function POST(req: NextRequest) {
       }
     }
   } catch { /* never fail the inbound webhook */ }
+
+  // Keep the Pipedrive transcript note current (best-effort; only if linked).
+  await logConversationToPipedrive(conv!.id);
 
   // empty TwiML 200 so Twilio is happy
   return new NextResponse("<Response></Response>", { headers: { "Content-Type": "text/xml" } });

@@ -11,6 +11,9 @@ create table if not exists conversations (
   last_direction text,                           -- in | out (of last message)
   last_status    text,                           -- last outbound delivery status
   lead_status    text not null default 'new',    -- new | hot | warm | cold | won | lost
+  pipedrive_person_id text,                       -- linked Pipedrive person
+  pipedrive_lead_id   text,                       -- linked Pipedrive lead (for status sync)
+  pipedrive_note_id   text,                       -- running transcript note
   created_at     timestamptz not null default now()
 );
 

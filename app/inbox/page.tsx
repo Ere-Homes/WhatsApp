@@ -59,6 +59,11 @@ export default function Inbox() {
     await sb.current.from("conversations").update({ lead_status }).eq("id", id);
     setConvs((prev) => prev.map((x) => (x.id === id ? { ...x, lead_status } : x)));
     setActive((a) => (a && a.id === id ? { ...a, lead_status } : a));
+    // Mirror the status to Pipedrive (find-or-create person + lead, set label).
+    fetch("/api/pipedrive/status", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ conversationId: id }),
+    }).catch(() => {});
   }
 
   useEffect(() => {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { sendWhatsApp, sendTemplate, sendMediaWhatsApp } from "@/lib/twilio";
+import { logConversationToPipedrive } from "@/lib/pipedriveSync";
 
 // POST free-form: { phone, body }
 // POST template:  { phone, contentSid, variables?, label? }  (works outside 24h window)
@@ -53,6 +54,9 @@ export async function POST(req: NextRequest) {
       .from("conversations")
       .update({ last_direction: "out", last_status: tw.status, unread: false })
       .eq("id", conv!.id);
+
+    // Keep the Pipedrive transcript note current (best-effort; only if linked).
+    await logConversationToPipedrive(conv!.id);
 
     return NextResponse.json({ ok: true, sid: tw.sid, status: tw.status });
   } catch (e: any) {

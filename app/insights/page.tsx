@@ -39,7 +39,6 @@ export default function Insights() {
   useEffect(() => { load(days); }, [days]);
 
   const t = data?.totals;
-  const maxDay = Math.max(1, ...(data?.byDay || []).map((d) => d.out + d.in));
 
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: "28px 24px" }}>
@@ -99,27 +98,6 @@ export default function Insights() {
               ));
             })()}
           </Section>
-
-          {/* By-day trend (fixed-width columns so a couple of days don't stretch) */}
-          {data!.byDay.length > 0 && (
-            <Section title={`Volume by day (since ${data!.range.since})`}>
-              <div style={{ display: "flex", alignItems: "flex-end", gap: 14, height: 140, paddingTop: 10, overflowX: "auto" }}>
-                {data!.byDay.map((d) => (
-                  <div key={d.day} style={{ width: 40, flexShrink: 0, textAlign: "center" }}>
-                    <div style={{ display: "flex", flexDirection: "column", justifyContent: "flex-end", height: 110 }}>
-                      <div title={`in ${d.in}`} style={{ height: `${(d.in / maxDay) * 100}%`, background: "#cfccc6", minHeight: d.in ? 2 : 0 }} />
-                      <div title={`out ${d.out}`} style={{ height: `${(d.out / maxDay) * 100}%`, background: "#141414", minHeight: d.out ? 2 : 0 }} />
-                    </div>
-                    <div style={{ fontSize: 10, color: "#9a958c", marginTop: 4 }}>{d.day.slice(5)}</div>
-                  </div>
-                ))}
-              </div>
-              <div style={{ fontSize: 11, color: "#6B6862", marginTop: 8 }}>
-                <span style={{ display: "inline-block", width: 10, height: 10, background: "#141414", marginRight: 4 }} />outbound
-                <span style={{ display: "inline-block", width: 10, height: 10, background: "#cfccc6", margin: "0 4px 0 14px" }} />inbound
-              </div>
-            </Section>
-          )}
 
           {/* Status + error breakdown */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>

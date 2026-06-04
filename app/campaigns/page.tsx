@@ -358,7 +358,7 @@ export default function Campaigns() {
       <Section title="3 · Send from">
         <select value={sender} onChange={(e) => setSender(e.target.value)} style={{ ...input, maxWidth: 280 }}>
           {senders.length === 0 && <option value="">(no sender configured)</option>}
-          {senders.map((s) => <option key={s} value={s}>+{s}</option>)}
+          {senders.map((s) => <option key={s} value={s}>+{s.replace(/^\+/, "")}</option>)}
         </select>
 
         <div style={{ fontSize: 13, color: "#6B6862", margin: "14px 0 8px" }}>How established is this number? Sets a safe daily cap so a young number doesn’t get flagged.</div>

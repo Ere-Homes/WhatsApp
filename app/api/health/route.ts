@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 // GET -> { senders: [{ sender, status, quality, limit }] }
 export async function GET() {
   try {
-    const data = await twilioGet("https://messaging.twilio.com/v2/Channels/Senders");
+    const data = await twilioGet("https://messaging.twilio.com/v2/Channels/Senders?Channel=whatsapp");
     const senders = (data?.senders || []).map((s: any) => ({
       sender: (s.sender_id || "").replace("whatsapp:", ""),
       status: s.status || null,                          // ONLINE | OFFLINE | ...

@@ -11,7 +11,7 @@ export const maxDuration = 60;
 // POST { recipients:[{phone,vars?}], contentSid, label, sendAt? }
 export async function POST(req: NextRequest) {
   try {
-    const { recipients, contentSid, label, sendAt } = await req.json();
+    const { recipients, contentSid, label, sendAt, from } = await req.json();
     if (!contentSid) return NextResponse.json({ error: "contentSid required" }, { status: 400 });
     if (!Array.isArray(recipients) || recipients.length === 0)
       return NextResponse.json({ error: "recipients required" }, { status: 400 });
@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
       if (blockedSet.has(wa)) { results.push({ phone: e164, status: "skipped_blacklist" }); continue; }
 
       try {
-        const tw = await sendTemplate(e164, contentSid, r.vars || undefined, sendAt || undefined);
+        const tw = await sendTemplate(e164, contentSid, r.vars || undefined, sendAt || undefined, from || undefined);
         const { data: conv } = await db
           .from("conversations")
           .upsert({ wa_phone: wa, last_body: label || "[template]", last_at: new Date().toISOString() }, { onConflict: "wa_phone" })

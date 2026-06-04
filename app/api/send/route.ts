@@ -6,7 +6,7 @@ import { sendWhatsApp, sendTemplate } from "@/lib/twilio";
 // POST template:  { phone, contentSid, variables?, label? }  (works outside 24h window)
 export async function POST(req: NextRequest) {
   try {
-    const { phone, body, contentSid, variables, label } = await req.json();
+    const { phone, body, contentSid, variables, label, from } = await req.json();
     if (!phone || (!body && !contentSid)) {
       return NextResponse.json({ error: "phone and body (or contentSid) required" }, { status: 400 });
     }
@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
       .single();
 
     // send via Twilio (template or free-form)
-    const tw = contentSid ? await sendTemplate(e164, contentSid, variables) : await sendWhatsApp(e164, body);
+    const tw = contentSid ? await sendTemplate(e164, contentSid, variables, undefined, from) : await sendWhatsApp(e164, body, from);
 
     // log outbound message
     await db.from("messages").insert({

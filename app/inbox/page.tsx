@@ -27,7 +27,16 @@ export default function Inbox() {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  const [senders, setSenders] = useState<string[]>([]);
+  const [sender, setSender] = useState("");
   const isMobile = useIsMobile();
+
+  useEffect(() => {
+    fetch("/api/senders").then((r) => r.json()).then((d) => {
+      setSenders(d.senders || []);
+      if (d.senders?.length) setSender(d.senders[0]);
+    });
+  }, []);
 
   async function loadConvs() {
     const { data } = await sb.current.from("conversations").select("*").order("last_at", { ascending: false });
@@ -62,7 +71,7 @@ export default function Inbox() {
     setSending(true);
     const res = await fetch("/api/send", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone: "+" + active.wa_phone, body: text }),
+      body: JSON.stringify({ phone: "+" + active.wa_phone, body: text, from: sender || undefined }),
     });
     setSending(false);
     if (res.ok) { setText(""); loadMsgs(active.id); loadConvs(); }
@@ -120,8 +129,13 @@ export default function Inbox() {
                   </div>
                 ))}
               </div>
-              <div style={{ padding: 14, borderTop: "1px solid #E4E1DB", background: "#fff", display: "flex", gap: 10, position: "relative" }}>
-                <TemplateSender phone={active.wa_phone} onSent={() => { loadMsgs(active.id); loadConvs(); }} />
+              <div style={{ padding: 14, borderTop: "1px solid #E4E1DB", background: "#fff", display: "flex", gap: 10, position: "relative", alignItems: "center" }}>
+                {senders.length > 1 && (
+                  <select value={sender} onChange={(e) => setSender(e.target.value)} title="Send from" style={{ padding: "11px 8px", border: "1px solid #E4E1DB", borderRadius: 8, fontSize: 13, flexShrink: 0, maxWidth: 150 }}>
+                    {senders.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                )}
+                <TemplateSender phone={active.wa_phone} from={sender} onSent={() => { loadMsgs(active.id); loadConvs(); }} />
                 <input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} placeholder="Type a message" style={{ flex: 1, padding: "12px 14px", border: "1px solid #E4E1DB", borderRadius: 8, fontSize: 14, minWidth: 0 }} />
                 <button onClick={send} disabled={sending} style={{ padding: "12px 22px", background: "#141414", color: "#fff", border: "none", borderRadius: 8, letterSpacing: 1, textTransform: "uppercase", fontSize: 12, cursor: "pointer", flexShrink: 0 }}>{sending ? "..." : "Send"}</button>
               </div>
@@ -198,7 +212,7 @@ function PushToPipedrive({ conv, lastInbound }: { conv: Conv; lastInbound: strin
 }
 
 // Pick an approved template and send it (works outside the 24h window).
-function TemplateSender({ phone, onSent }: { phone: string; onSent: () => void }) {
+function TemplateSender({ phone, from, onSent }: { phone: string; from?: string; onSent: () => void }) {
   const [open, setOpen] = useState(false);
   const [tpls, setTpls] = useState<any[]>([]);
   const [sel, setSel] = useState<any | null>(null);
@@ -228,7 +242,7 @@ function TemplateSender({ phone, onSent }: { phone: string; onSent: () => void }
     const res = await fetch("/api/send", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone: "+" + phone, contentSid: t.sid, variables: values, label }),
+      body: JSON.stringify({ phone: "+" + phone, contentSid: t.sid, variables: values, label, from: from || undefined }),
     });
     setBusy(false);
     if (res.ok) { setOpen(false); setSel(null); onSent(); }

@@ -1,10 +1,14 @@
 "use client";
 import { useEffect, useState } from "react";
 import { RATES } from "@/lib/rates";
+import { supabaseBrowser } from "@/lib/supabase";
 
 type Tpl = { sid: string; name: string; status: string; body: string | null; variables: Record<string, string> };
 
 const BATCH = 25;
+// Conservative 24h cap to protect quality rating while the number ramps tiers.
+// Meta tiers go 250/1K -> 10K -> 100K as quality stays high; start low.
+const DAILY_CAP = 250;
 
 export default function Campaigns() {
   const [tpls, setTpls] = useState<Tpl[]>([]);
@@ -17,12 +21,27 @@ export default function Campaigns() {
   const [progress, setProgress] = useState<{ done: number; total: number; sent: number; skipped: number; failed: number } | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [doneMsg, setDoneMsg] = useState<string | null>(null);
+  const [senders, setSenders] = useState<string[]>([]);
+  const [sender, setSender] = useState("");
+  const [optIn, setOptIn] = useState(false);
+  const [sentToday, setSentToday] = useState<number | null>(null);
 
   useEffect(() => {
     fetch("/api/templates").then((r) => r.json()).then((d) => {
-      const approved = (d.templates || []).filter((t: any) => t.status === "approved");
-      setTpls(approved);
+      setTpls((d.templates || []).filter((t: any) => t.status === "approved"));
     });
+    fetch("/api/senders").then((r) => r.json()).then((d) => {
+      setSenders(d.senders || []);
+      if (d.senders?.length) setSender(d.senders[0]);
+    });
+    // Outbound messages in the last 24h (for the daily-cap guard)
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    supabaseBrowser()
+      .from("messages")
+      .select("id", { count: "exact", head: true })
+      .eq("direction", "out")
+      .gte("created_at", since)
+      .then(({ count }) => setSentToday(count ?? 0));
   }, []);
 
   const tpl = tpls.find((t) => t.sid === tplSid);
@@ -53,6 +72,10 @@ export default function Campaigns() {
     setDoneMsg(null);
     if (!tplSid) return setErr("Pick an approved template.");
     if (numbers.length === 0) return setErr("Add at least one recipient.");
+    if (!optIn) return setErr("Please confirm these recipients opted in to WhatsApp messages.");
+    if (sentToday != null && sentToday + numbers.length > DAILY_CAP) {
+      if (!confirm(`Heads up: this would push you to ${sentToday + numbers.length} sends in 24h, over the recommended ${DAILY_CAP} cap for a ramping number. Sending too much too fast can drop your quality rating and pause templates. Continue anyway?`)) return;
+    }
 
     let iso: string | undefined;
     if (schedule) {
@@ -77,7 +100,7 @@ export default function Campaigns() {
         const res = await fetch("/api/campaign/send", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ recipients: batch, contentSid: tplSid, label, sendAt: iso }),
+          body: JSON.stringify({ recipients: batch, contentSid: tplSid, label, sendAt: iso, from: sender || undefined }),
         });
         const d = await res.json();
         if (!res.ok) throw new Error(d.error || "Batch failed");
@@ -128,12 +151,33 @@ export default function Campaigns() {
         </div>
       </Section>
 
-      <Section title="3 · Schedule (optional)">
+      <Section title="3 · Send from">
+        <select value={sender} onChange={(e) => setSender(e.target.value)} style={{ ...input, maxWidth: 280 }}>
+          {senders.length === 0 && <option value="">(no sender configured)</option>}
+          {senders.map((s) => <option key={s} value={s}>+{s}</option>)}
+        </select>
+      </Section>
+
+      <Section title="4 · Schedule (optional)">
         <label style={{ fontSize: 14, display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
           <input type="checkbox" checked={schedule} onChange={(e) => setSchedule(e.target.checked)} /> Schedule for later (15 min – 7 days)
         </label>
         {schedule && <input type="datetime-local" value={sendAt} onChange={(e) => setSendAt(e.target.value)} style={{ ...input, marginTop: 8, maxWidth: 280 }} />}
       </Section>
+
+      {/* Compliance — keeps the number's quality rating healthy */}
+      <div style={{ background: "#FBFAF7", border: "1px solid #E4E1DB", borderRadius: 12, padding: 16, marginBottom: 14 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Before you send</div>
+        <label style={{ fontSize: 14, display: "flex", gap: 8, alignItems: "flex-start", cursor: "pointer", marginBottom: 10 }}>
+          <input type="checkbox" checked={optIn} onChange={(e) => setOptIn(e.target.checked)} style={{ marginTop: 3 }} />
+          <span>I confirm these recipients <b>opted in</b> to receive WhatsApp messages from ERE Homes.</span>
+        </label>
+        <ul style={{ fontSize: 12, color: "#6B6862", margin: 0, paddingLeft: 18, lineHeight: 1.7 }}>
+          <li>Last 24h sent: <b style={{ color: sentToday != null && sentToday + numbers.length > DAILY_CAP ? "#b00020" : "#137333" }}>{sentToday == null ? "…" : sentToday}</b> · this campaign +{numbers.length} (recommended cap {DAILY_CAP}/24h while ramping)</li>
+          <li>Template-only (works outside the 24h window) · blacklisted/opted-out contacts are skipped</li>
+          <li>Paced well under Twilio’s 80 msg/sec limit; build volume gradually to keep your quality rating high</li>
+        </ul>
+      </div>
 
       <div style={{ background: "#fff", border: "1px solid #E4E1DB", borderRadius: 12, padding: 16, marginBottom: 16 }}>
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14 }}>

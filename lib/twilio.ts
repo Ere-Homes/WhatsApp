@@ -63,18 +63,30 @@ function statusCallbackUrl() {
 // Messaging Service SID — required for Twilio's native scheduled sends.
 const MESSAGING_SERVICE_SID = () => cleanEnv(process.env.TWILIO_MESSAGING_SERVICE_SID);
 
-async function postMessage(form: URLSearchParams, opts?: { sendAt?: string }) {
+// Available WhatsApp sender numbers. Comma-separated TWILIO_WHATSAPP_SENDERS
+// overrides; falls back to the single TWILIO_WHATSAPP_FROM.
+export function whatsappSenders(): string[] {
+  const list = cleanEnv(process.env.TWILIO_WHATSAPP_SENDERS);
+  const items = (list ? list.split(",") : [cleanEnv(process.env.TWILIO_WHATSAPP_FROM)])
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((s) => (s.startsWith("whatsapp:") ? s : `whatsapp:${s}`));
+  return Array.from(new Set(items));
+}
+
+async function postMessage(form: URLSearchParams, opts?: { sendAt?: string; from?: string }) {
   const sid = cleanEnv(process.env.TWILIO_ACCOUNT_SID);
   const token = cleanEnv(process.env.TWILIO_AUTH_TOKEN);
 
   // Scheduled sends require a Messaging Service + ScheduleType=fixed; immediate
-  // sends use the From number.
+  // sends use the chosen From number (or the default).
   if (opts?.sendAt && MESSAGING_SERVICE_SID()) {
     form.set("MessagingServiceSid", MESSAGING_SERVICE_SID());
     form.set("ScheduleType", "fixed");
     form.set("SendAt", opts.sendAt);
   } else {
-    form.set("From", cleanEnv(process.env.TWILIO_WHATSAPP_FROM));
+    const from = opts?.from ? (opts.from.startsWith("whatsapp:") ? opts.from : `whatsapp:${opts.from}`) : cleanEnv(process.env.TWILIO_WHATSAPP_FROM);
+    form.set("From", from);
   }
   const cb = statusCallbackUrl();
   if (cb) form.set("StatusCallback", cb);
@@ -94,14 +106,14 @@ async function postMessage(form: URLSearchParams, opts?: { sendAt?: string }) {
 const waTo = (toE164: string) => (toE164.startsWith("whatsapp:") ? toE164 : `whatsapp:${toE164}`);
 
 // Free-form message (only valid inside the 24h customer-service window).
-export async function sendWhatsApp(toE164: string, body: string) {
-  return postMessage(new URLSearchParams({ To: waTo(toE164), Body: body }));
+export async function sendWhatsApp(toE164: string, body: string, from?: string) {
+  return postMessage(new URLSearchParams({ To: waTo(toE164), Body: body }), from ? { from } : undefined);
 }
 
 // Approved template message (works outside the 24h window). Pass sendAt (ISO)
-// to schedule it via Twilio (15 min to 7 days out).
-export async function sendTemplate(toE164: string, contentSid: string, variables?: Record<string, string>, sendAt?: string) {
+// to schedule it via Twilio (15 min to 7 days out), and/or a from sender.
+export async function sendTemplate(toE164: string, contentSid: string, variables?: Record<string, string>, sendAt?: string, from?: string) {
   const form = new URLSearchParams({ To: waTo(toE164), ContentSid: contentSid });
   if (variables && Object.keys(variables).length) form.set("ContentVariables", JSON.stringify(variables));
-  return postMessage(form, sendAt ? { sendAt } : undefined);
+  return postMessage(form, { sendAt, from });
 }

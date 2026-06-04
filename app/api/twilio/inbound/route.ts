@@ -9,13 +9,17 @@ export async function POST(req: NextRequest) {
   const from = String(form.get("From") || "").replace("whatsapp:", "");
   const body = String(form.get("Body") || "");
   const sid = String(form.get("MessageSid") || "");
+  const profileName = String(form.get("ProfileName") || "").trim(); // WhatsApp display name
   const phone = from.replace("+", "");
   const db = supabaseAdmin();
 
-  // upsert conversation + log inbound
+  // upsert conversation + log inbound (capture WhatsApp profile name if present)
   const { data: conv } = await db
     .from("conversations")
-    .upsert({ wa_phone: phone, last_body: body, last_at: new Date().toISOString() }, { onConflict: "wa_phone" })
+    .upsert(
+      { wa_phone: phone, last_body: body, last_at: new Date().toISOString(), ...(profileName ? { name: profileName } : {}) },
+      { onConflict: "wa_phone" }
+    )
     .select()
     .single();
   await db.from("messages").insert({

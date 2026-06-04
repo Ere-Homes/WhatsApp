@@ -25,6 +25,41 @@ export default function Campaigns() {
   const [sender, setSender] = useState("");
   const [optIn, setOptIn] = useState(false);
   const [sentToday, setSentToday] = useState<number | null>(null);
+  const [source, setSource] = useState<"manual" | "crm">("manual");
+  const [crmFilters, setCrmFilters] = useState<Record<string, string>>({});
+  const [crmLimit, setCrmLimit] = useState(500);
+  const [crmLoading, setCrmLoading] = useState(false);
+  const [options, setOptions] = useState<Record<string, any[]>>({});
+
+  // Lazy-load CRM filter dropdowns the first time the segment tab opens
+  useEffect(() => {
+    if (source !== "crm" || options.community) return;
+    ["community", "nationality", "unit_type"].forEach((col) => {
+      fetch(`/api/crm/options?col=${col}`).then((r) => r.json()).then((d) => {
+        if (d.values) setOptions((prev) => ({ ...prev, [col]: d.values }));
+      });
+    });
+  }, [source]); // eslint-disable-line
+
+  async function loadSegment() {
+    setErr(null);
+    setCrmLoading(true);
+    try {
+      const res = await fetch("/api/crm/contacts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filters: crmFilters, limit: crmLimit }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Failed to load segment");
+      if (!d.phones?.length) { setErr("No contactable numbers matched that segment."); setRaw(""); }
+      else setRaw(d.phones.join("\n"));
+    } catch (e: any) {
+      setErr(e.message);
+    } finally {
+      setCrmLoading(false);
+    }
+  }
 
   useEffect(() => {
     fetch("/api/templates").then((r) => r.json()).then((d) => {
@@ -142,13 +177,46 @@ export default function Campaigns() {
       </Section>
 
       <Section title="2 · Recipients">
-        <textarea value={raw} onChange={(e) => setRaw(e.target.value)} rows={5} placeholder="Paste numbers, one per line (e.g. +9715XXXXXXXX)" style={{ ...input, resize: "vertical" }} />
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 6 }}>
-          <label style={{ fontSize: 13, color: "#6B6862", cursor: "pointer" }}>
-            <input type="file" accept=".csv,text/csv,text/plain" onChange={onFile} style={{ fontSize: 13 }} />
-          </label>
-          <span style={{ fontSize: 13, color: numbers.length ? "#137333" : "#9a958c", fontWeight: 600 }}>{numbers.length} valid recipient{numbers.length === 1 ? "" : "s"}</span>
+        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+          {(["manual", "crm"] as const).map((m) => (
+            <button key={m} onClick={() => setSource(m)} style={{ ...pill, ...(source === m ? pillActive : {}) }}>
+              {m === "manual" ? "Paste / CSV" : "From CRM segment"}
+            </button>
+          ))}
         </div>
+
+        {source === "manual" && (
+          <>
+            <textarea value={raw} onChange={(e) => setRaw(e.target.value)} rows={5} placeholder="Paste numbers, one per line (e.g. +9715XXXXXXXX)" style={{ ...input, resize: "vertical" }} />
+            <label style={{ fontSize: 13, color: "#6B6862", cursor: "pointer" }}>
+              <input type="file" accept=".csv,text/csv,text/plain" onChange={onFile} style={{ fontSize: 13 }} />
+            </label>
+          </>
+        )}
+
+        {source === "crm" && (
+          <div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 8 }}>
+              {(["community", "nationality", "unit_type"] as const).map((col) => (
+                <select key={col} value={crmFilters[col] || ""} onChange={(e) => setCrmFilters({ ...crmFilters, [col]: e.target.value })} style={{ ...input, marginBottom: 0 }}>
+                  <option value="">{col.replace("_", " ")}: any</option>
+                  {(options[col] || []).map((o: any) => <option key={o.val} value={o.val}>{o.val} ({o.n})</option>)}
+                </select>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
+              <label style={{ fontSize: 13, color: "#6B6862" }}>Max recipients
+                <input type="number" value={crmLimit} min={1} max={5000} onChange={(e) => setCrmLimit(parseInt(e.target.value || "500", 10))} style={{ ...input, width: 90, marginLeft: 6, marginBottom: 0, display: "inline-block" }} />
+              </label>
+              <button onClick={loadSegment} disabled={crmLoading} style={{ ...pillActive, padding: "8px 16px", borderRadius: 8, border: "none", cursor: "pointer" }}>
+                {crmLoading ? "Loading…" : "Load recipients"}
+              </button>
+            </div>
+            <div style={{ fontSize: 11, color: "#9a958c", marginTop: 6 }}>Pulls only contactable numbers (excludes do-not-call, uncontactable, and switchboards).</div>
+          </div>
+        )}
+
+        <div style={{ fontSize: 13, color: numbers.length ? "#137333" : "#9a958c", fontWeight: 600, marginTop: 10 }}>{numbers.length} valid recipient{numbers.length === 1 ? "" : "s"}</div>
       </Section>
 
       <Section title="3 · Send from">
@@ -229,5 +297,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 const btn: React.CSSProperties = { padding: "12px 22px", background: "#141414", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 13, letterSpacing: 1, textTransform: "uppercase" };
+const pill: React.CSSProperties = { padding: "8px 16px", background: "#fff", border: "1px solid #E4E1DB", borderRadius: 20, cursor: "pointer", fontSize: 13 };
+const pillActive: React.CSSProperties = { background: "#141414", color: "#fff", borderColor: "#141414" };
 const input: React.CSSProperties = { width: "100%", padding: "10px 12px", border: "1px solid #E4E1DB", borderRadius: 8, fontSize: 14, boxSizing: "border-box", background: "#fff" };
 const errBox: React.CSSProperties = { background: "#fdecea", color: "#b00020", padding: 12, borderRadius: 8, marginBottom: 14, fontSize: 14 };

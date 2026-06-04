@@ -101,7 +101,8 @@ export default function Templates() {
       varDefaults: t.variables || {},
     });
     setShowNew(true);
-    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+    // Scroll the form into view (the app scrolls an inner container, not window).
+    setTimeout(() => document.getElementById("tpl-form-top")?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
   }
 
   return (
@@ -380,7 +381,7 @@ function NewTemplate({ onCreated, seed }: { onCreated: () => void; seed?: any })
   }
 
   return (
-    <div style={{ ...card, marginBottom: 18, background: "#FBFAF7" }}>
+    <div id="tpl-form-top" style={{ ...card, marginBottom: 18, background: "#FBFAF7", scrollMarginTop: 12 }}>
       <div style={{ fontWeight: 600, marginBottom: 14 }}>{seed ? "Duplicate template — edit, then submit" : "New WhatsApp template"}</div>
       {seed && kind === "card" && (
         <div style={{ fontSize: 12, color: "#9a6700", background: "#FFF8E6", border: "1px solid #F0E2B8", borderRadius: 8, padding: "8px 12px", marginBottom: 12 }}>

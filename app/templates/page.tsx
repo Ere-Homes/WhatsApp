@@ -46,6 +46,8 @@ export default function Templates() {
   const [err, setErr] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [autoFor, setAutoFor] = useState<string | null>(null);
+  const [open, setOpen] = useState<Set<string>>(new Set()); // expanded template cards
+  const toggle = (sid: string) => setOpen((p) => { const n = new Set(p); n.has(sid) ? n.delete(sid) : n.add(sid); return n; });
 
   async function load() {
     setLoading(true);
@@ -136,11 +138,12 @@ export default function Templates() {
       <div style={{ display: "grid", gap: 12 }}>
         {tpls.map((t) => (
           <div key={t.sid} style={card}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
-              <div>
-                <div style={{ fontWeight: 600, fontSize: 15 }}>{t.name}</div>
-                <div style={{ fontSize: 12, color: "#9a958c", marginTop: 2 }}>
-                  {t.sid} · {t.type || "—"} · {t.language || "—"}
+            <div onClick={() => toggle(t.sid)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, cursor: "pointer" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                <span style={{ color: "#9a958c", fontSize: 12, transform: open.has(t.sid) ? "rotate(90deg)" : "none", transition: "transform .15s", flexShrink: 0 }}>▶</span>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
+                  {open.has(t.sid) && <div style={{ fontSize: 12, color: "#9a958c", marginTop: 2 }}>{t.sid} · {t.type || "—"} · {t.language || "—"}</div>}
                 </div>
               </div>
               <span
@@ -153,46 +156,51 @@ export default function Templates() {
                   padding: "4px 10px",
                   borderRadius: 20,
                   whiteSpace: "nowrap",
+                  flexShrink: 0,
                 }}
               >
                 {t.status}
               </span>
             </div>
 
-            {t.category && (
-              <div style={{ fontSize: 12, color: "#6B6862", marginTop: 8 }}>Category: {t.category}</div>
-            )}
-            {t.body && (
-              <div style={{ marginTop: 10, padding: 12, background: "#F7F5F0", borderRadius: 8, fontSize: 14, whiteSpace: "pre-wrap" }}>
-                {t.body}
-              </div>
-            )}
-            {Object.keys(t.variables || {}).length > 0 && (
-              <div style={{ fontSize: 12, color: "#6B6862", marginTop: 8 }}>
-                Variables: {Object.entries(t.variables).map(([k, v]) => `{{${k}}}=${v}`).join(", ")}
-              </div>
-            )}
-            {t.rejection_reason && (
-              <div style={{ fontSize: 12, color: "#b00020", marginTop: 8 }}>
-                Rejected: {t.rejection_reason}
-              </div>
-            )}
+            {open.has(t.sid) && (
+              <>
+                {t.category && (
+                  <div style={{ fontSize: 12, color: "#6B6862", marginTop: 8 }}>Category: {t.category}</div>
+                )}
+                {t.body && (
+                  <div style={{ marginTop: 10, padding: 12, background: "#F7F5F0", borderRadius: 8, fontSize: 14, whiteSpace: "pre-wrap" }}>
+                    {t.body}
+                  </div>
+                )}
+                {Object.keys(t.variables || {}).length > 0 && (
+                  <div style={{ fontSize: 12, color: "#6B6862", marginTop: 8 }}>
+                    Variables: {Object.entries(t.variables).map(([k, v]) => `{{${k}}}=${v}`).join(", ")}
+                  </div>
+                )}
+                {t.rejection_reason && (
+                  <div style={{ fontSize: 12, color: "#b00020", marginTop: 8 }}>
+                    Rejected: {t.rejection_reason}
+                  </div>
+                )}
 
-            <div style={{ display: "flex", gap: 8, marginTop: 14, borderTop: "1px solid #F0EEE9", paddingTop: 12, flexWrap: "wrap" }}>
-              {t.replyButtons.length > 0 && (
-                <button onClick={() => setAutoFor(autoFor === t.sid ? null : t.sid)} style={{ ...action, fontWeight: 600 }}>
-                  {autoFor === t.sid ? "Hide auto-replies" : `Auto-replies (${t.replyButtons.length})`}
-                </button>
-              )}
-              <button onClick={() => duplicateTpl(t)} disabled={busySid === t.sid} style={action}>
-                {busySid === t.sid ? "…" : "Duplicate"}
-              </button>
-              <button onClick={() => deleteTpl(t)} disabled={busySid === t.sid} style={{ ...action, color: "#b00020", borderColor: "#f0c5c0" }}>
-                Delete
-              </button>
-            </div>
+                <div style={{ display: "flex", gap: 8, marginTop: 14, borderTop: "1px solid #F0EEE9", paddingTop: 12, flexWrap: "wrap" }}>
+                  {t.replyButtons.length > 0 && (
+                    <button onClick={() => setAutoFor(autoFor === t.sid ? null : t.sid)} style={{ ...action, fontWeight: 600 }}>
+                      {autoFor === t.sid ? "Hide auto-replies" : `Auto-replies (${t.replyButtons.length})`}
+                    </button>
+                  )}
+                  <button onClick={() => duplicateTpl(t)} disabled={busySid === t.sid} style={action}>
+                    {busySid === t.sid ? "…" : "Duplicate"}
+                  </button>
+                  <button onClick={() => deleteTpl(t)} disabled={busySid === t.sid} style={{ ...action, color: "#b00020", borderColor: "#f0c5c0" }}>
+                    Delete
+                  </button>
+                </div>
 
-            {autoFor === t.sid && <AutoReplyConfig buttons={t.replyButtons} />}
+                {autoFor === t.sid && <AutoReplyConfig buttons={t.replyButtons} />}
+              </>
+            )}
           </div>
         ))}
       </div>

@@ -78,7 +78,7 @@ export default function Dashboard() {
             <Stat label="Read rate" value={t ? `${t.readRate}%` : "—"} href="/insights" />
             <Stat label="Failed · 7d" value={t ? t.failed + t.undelivered : "—"} href="/insights" color={t && t.failed + t.undelivered ? "#b00020" : undefined} />
             <Stat label="Balance" value={bal ? `${bal.currency} ${parseFloat(bal.balance).toFixed(2)}` : "—"} href="/billing" />
-            <Stat label="Templates" value={tpls ? `${approved}✓ / ${pending}…` : "—"} href="/templates" />
+            <Stat label="Approved templates" value={tpls ? approved : "—"} href="/templates" />
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 16 }}>

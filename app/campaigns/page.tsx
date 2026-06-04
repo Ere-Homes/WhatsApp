@@ -381,11 +381,6 @@ export default function Campaigns() {
         <div style={{ fontSize: 13, background: "#FFF8E6", border: "1px solid #F0E2B8", borderRadius: 8, padding: "8px 12px", marginBottom: 10, color: "#6b5a16" }}>
           + Make sure this template gives a clear way out (e.g. “Reply STOP to unsubscribe”). When someone replies STOP they’re blacklisted automatically and never messaged again.
         </div>
-        <ul style={{ fontSize: 12, color: "#6B6862", margin: 0, paddingLeft: 18, lineHeight: 1.7 }}>
-          <li>Last 24h sent: <b style={{ color: sentToday != null && sentToday + numbers.length > DAILY_CAP ? "#b00020" : "#137333" }}>{sentToday == null ? "…" : sentToday}</b> · this campaign +{numbers.length} (cap for a <b>{wu.label.toLowerCase()}</b> number: {DAILY_CAP}/24h)</li>
-          <li>Template-only (works outside the 24h window) · blacklisted/opted-out contacts are skipped</li>
-          <li>Paced well under Twilio’s 80 msg/sec limit; build volume gradually to keep your quality rating high</li>
-        </ul>
       </div>
 
       <div style={{ background: "#fff", border: "1px solid #E4E1DB", borderRadius: 12, padding: 16, marginBottom: 16 }}>

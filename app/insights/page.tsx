@@ -77,25 +77,49 @@ export default function Insights() {
             <Card label="Failed / undeliv." value={t.failed + t.undelivered} sub={`${t.failRate}% of outbound`} color={t.failed + t.undelivered ? "#b00020" : undefined} />
           </div>
 
-          {/* By-day trend */}
-          <Section title={`Volume by day (since ${data!.range.since})`}>
-            {data!.byDay.length === 0 && <div style={{ color: "#6B6862" }}>No messages in range.</div>}
-            <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 140, paddingTop: 10 }}>
-              {data!.byDay.map((d) => (
-                <div key={d.day} style={{ flex: 1, textAlign: "center" }}>
-                  <div style={{ display: "flex", flexDirection: "column", justifyContent: "flex-end", height: 110 }}>
-                    <div title={`in ${d.in}`} style={{ height: `${(d.in / maxDay) * 100}%`, background: "#cfccc6" }} />
-                    <div title={`out ${d.out}`} style={{ height: `${(d.out / maxDay) * 100}%`, background: "#141414" }} />
+          {/* Delivery breakdown — the funnel from sent to read */}
+          <Section title="Delivery breakdown">
+            {(() => {
+              const rows = [
+                { label: "Sent", n: t.outbound, c: "#141414" },
+                { label: "Delivered", n: t.delivered + t.read, c: "#137333" },
+                { label: "Read", n: t.read, c: "#1a73e8" },
+                { label: "Failed / undelivered", n: t.failed + t.undelivered, c: "#b00020" },
+                { label: "Inbound replies", n: t.inbound, c: "#9a958c" },
+              ];
+              const max = Math.max(1, ...rows.map((r) => r.n));
+              return rows.map((r) => (
+                <div key={r.label} style={{ display: "flex", alignItems: "center", gap: 12, padding: "7px 0" }}>
+                  <span style={{ width: 150, flexShrink: 0, fontSize: 13, color: "#3a3a3a" }}>{r.label}</span>
+                  <div style={{ flex: 1, background: "#F3F1EC", borderRadius: 6, height: 22, overflow: "hidden" }}>
+                    <div style={{ width: `${(r.n / max) * 100}%`, height: "100%", background: r.c, minWidth: r.n ? 3 : 0, borderRadius: 6 }} />
                   </div>
-                  <div style={{ fontSize: 10, color: "#9a958c", marginTop: 4 }}>{d.day.slice(5)}</div>
+                  <span style={{ width: 56, textAlign: "right", fontWeight: 600, fontSize: 14 }}>{r.n}</span>
                 </div>
-              ))}
-            </div>
-            <div style={{ fontSize: 11, color: "#6B6862", marginTop: 8 }}>
-              <span style={{ display: "inline-block", width: 10, height: 10, background: "#141414", marginRight: 4 }} />outbound
-              <span style={{ display: "inline-block", width: 10, height: 10, background: "#cfccc6", margin: "0 4px 0 14px" }} />inbound
-            </div>
+              ));
+            })()}
           </Section>
+
+          {/* By-day trend (fixed-width columns so a couple of days don't stretch) */}
+          {data!.byDay.length > 0 && (
+            <Section title={`Volume by day (since ${data!.range.since})`}>
+              <div style={{ display: "flex", alignItems: "flex-end", gap: 14, height: 140, paddingTop: 10, overflowX: "auto" }}>
+                {data!.byDay.map((d) => (
+                  <div key={d.day} style={{ width: 40, flexShrink: 0, textAlign: "center" }}>
+                    <div style={{ display: "flex", flexDirection: "column", justifyContent: "flex-end", height: 110 }}>
+                      <div title={`in ${d.in}`} style={{ height: `${(d.in / maxDay) * 100}%`, background: "#cfccc6", minHeight: d.in ? 2 : 0 }} />
+                      <div title={`out ${d.out}`} style={{ height: `${(d.out / maxDay) * 100}%`, background: "#141414", minHeight: d.out ? 2 : 0 }} />
+                    </div>
+                    <div style={{ fontSize: 10, color: "#9a958c", marginTop: 4 }}>{d.day.slice(5)}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ fontSize: 11, color: "#6B6862", marginTop: 8 }}>
+                <span style={{ display: "inline-block", width: 10, height: 10, background: "#141414", marginRight: 4 }} />outbound
+                <span style={{ display: "inline-block", width: 10, height: 10, background: "#cfccc6", margin: "0 4px 0 14px" }} />inbound
+              </div>
+            </Section>
+          )}
 
           {/* Status + error breakdown */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>

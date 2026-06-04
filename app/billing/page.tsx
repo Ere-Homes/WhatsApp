@@ -43,12 +43,10 @@ export default function Billing() {
     <div style={{ maxWidth: 1000, margin: "0 auto", padding: "28px 24px" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18, gap: 10, flexWrap: "wrap" }}>
         <h1 style={{ fontFamily: "Georgia, serif", fontWeight: 400, fontSize: 24, margin: 0 }}>Billing</h1>
-        <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
-          <div style={{ display: "flex", gap: 6 }}>
-            {["USD", "AED", "GBP"].map((c) => (
-              <button key={c} onClick={() => setCur(c)} style={{ ...tab, ...(cur === c ? tabActive : {}) }}>{c}</button>
-            ))}
-          </div>
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <select value={cur} onChange={(e) => setCur(e.target.value)} style={{ ...tab, paddingRight: 26 }}>
+            {["USD", "AED", "GBP"].map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
           <div style={{ display: "flex", gap: 6 }}>
             {[7, 30, 90].map((d) => (
               <button key={d} onClick={() => setDays(d)} style={{ ...tab, ...(days === d ? tabActive : {}) }}>{d}d</button>

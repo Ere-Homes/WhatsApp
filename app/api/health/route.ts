@@ -12,7 +12,7 @@ export async function GET() {
   try {
     const data = await twilioGet("https://messaging.twilio.com/v2/Channels/Senders?Channel=whatsapp");
     const senders = (data?.senders || []).map((s: any) => ({
-      sender: (s.sender_id || "").replace("whatsapp:", ""),
+      sender: (s.sender_id || "").replace("whatsapp:", "").replace(/^\+/, ""),
       status: s.status || null,                          // ONLINE | OFFLINE | ...
       quality: s.properties?.quality_rating || null,     // HIGH | MEDIUM | LOW
       limit: s.properties?.messaging_limit || null,      // e.g. "10K Customers/24hr"

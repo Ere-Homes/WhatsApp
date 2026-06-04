@@ -29,9 +29,16 @@ export async function POST(req: NextRequest) {
   // mark the conversation unread + last message inbound
   await db.from("conversations").update({ unread: true, last_direction: "in", last_status: "received" }).eq("id", conv!.id);
 
-  // Button / keyword auto-reply rules (managed in /automation). Match the
-  // tapped button text or typed keyword to an enabled rule, case-insensitive.
   const text = body.trim().toLowerCase();
+
+  // Opt-out safety net — STOP/Unsubscribe etc. ALWAYS blacklist, rule or not.
+  const OPT_OUT = ["stop", "unsubscribe", "unsub", "cancel", "stop promotions", "opt out", "optout", "remove me"];
+  if (OPT_OUT.includes(text)) {
+    await db.from("conversations").update({ status: "blocked" }).eq("id", conv!.id);
+  }
+
+  // Button / keyword auto-reply rules (set per-button when creating a template).
+  // Match the tapped button text or typed keyword to an enabled rule.
   try {
     const { data: rules } = await db.from("auto_replies").select("*").eq("enabled", true);
     const rule = (rules || []).find((r: any) => (r.trigger || "").trim().toLowerCase() === text);

@@ -189,7 +189,15 @@ export default function Templates() {
   );
 }
 
-type Btn = { type: "url" | "phone" | "quick-reply"; title: string; url?: string; phone?: string };
+type Btn = {
+  type: "url" | "phone" | "quick-reply";
+  title: string;
+  url?: string;
+  phone?: string;
+  auto?: boolean; // auto-reply when this button is tapped
+  reply?: string; // the auto-reply text
+  pushLead?: boolean; // create a Hot lead in Pipedrive on tap
+};
 
 function NewTemplate({ onCreated }: { onCreated: () => void }) {
   const [kind, setKind] = useState<"text" | "card" | "quick-reply">("text");
@@ -388,25 +396,55 @@ function NewTemplate({ onCreated }: { onCreated: () => void }) {
             </span>
             <button onClick={addButton} disabled={buttons.length >= maxButtons} style={{ ...pill, padding: "4px 12px" }}>+ Add</button>
           </div>
-          {buttons.map((bt, i) => (
-            <div key={i} style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center" }}>
-              {kind === "card" && (
-                <select value={bt.type} onChange={(e) => setBtn(i, { type: e.target.value as any })} style={{ ...input, width: 120 }}>
-                  <option value="url">Link</option>
-                  <option value="phone">Call</option>
-                  <option value="quick-reply">Reply</option>
-                </select>
-              )}
-              <input value={bt.title} onChange={(e) => setBtn(i, { title: e.target.value })} placeholder="Button text" style={{ ...input, flex: 1 }} />
-              {kind === "card" && bt.type === "url" && (
-                <input value={bt.url || ""} onChange={(e) => setBtn(i, { url: e.target.value })} placeholder="https://…" style={{ ...input, flex: 1 }} />
-              )}
-              {kind === "card" && bt.type === "phone" && (
-                <input value={bt.phone || ""} onChange={(e) => setBtn(i, { phone: e.target.value })} placeholder="+9715…" style={{ ...input, flex: 1 }} />
-              )}
-              <button onClick={() => setButtons(buttons.filter((_, idx) => idx !== i))} style={{ ...pill, padding: "6px 10px", color: "#b00020" }}>✕</button>
-            </div>
-          ))}
+          {buttons.map((bt, i) => {
+            const isReply = kind === "quick-reply" || bt.type === "quick-reply";
+            return (
+              <div key={i} style={{ border: "1px solid #F0EEE9", borderRadius: 10, padding: 10, marginBottom: 8 }}>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  {kind === "card" && (
+                    <select value={bt.type} onChange={(e) => setBtn(i, { type: e.target.value as any })} style={{ ...input, width: 110, marginBottom: 0 }}>
+                      <option value="url">Link</option>
+                      <option value="phone">Call</option>
+                      <option value="quick-reply">Reply</option>
+                    </select>
+                  )}
+                  <input value={bt.title} onChange={(e) => setBtn(i, { title: e.target.value })} placeholder="Button text" style={{ ...input, flex: 1, marginBottom: 0 }} />
+                  {kind === "card" && bt.type === "url" && (
+                    <input value={bt.url || ""} onChange={(e) => setBtn(i, { url: e.target.value })} placeholder="https://…" style={{ ...input, flex: 1, marginBottom: 0 }} />
+                  )}
+                  {kind === "card" && bt.type === "phone" && (
+                    <input value={bt.phone || ""} onChange={(e) => setBtn(i, { phone: e.target.value })} placeholder="+9715…" style={{ ...input, flex: 1, marginBottom: 0 }} />
+                  )}
+                  <button onClick={() => setButtons(buttons.filter((_, idx) => idx !== i))} style={{ ...pill, padding: "6px 10px", color: "#b00020" }}>✕</button>
+                </div>
+
+                {/* Auto-reply: only reply buttons trigger an inbound message back to us */}
+                {isReply && bt.title.trim() && (
+                  <div style={{ marginTop: 8, paddingLeft: 2 }}>
+                    <label style={{ fontSize: 13, display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
+                      <input type="checkbox" checked={!!bt.auto} onChange={(e) => setBtn(i, { auto: e.target.checked })} />
+                      Auto-reply when “{bt.title.trim()}” is tapped
+                    </label>
+                    {bt.auto && (
+                      <>
+                        <textarea
+                          value={bt.reply || ""}
+                          onChange={(e) => setBtn(i, { reply: e.target.value })}
+                          rows={2}
+                          placeholder="Reply message sent automatically on tap…"
+                          style={{ ...input, resize: "vertical", marginTop: 6 }}
+                        />
+                        <label style={{ fontSize: 12, color: "#137333", display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
+                          <input type="checkbox" checked={!!bt.pushLead} onChange={(e) => setBtn(i, { pushLead: e.target.checked })} />
+                          Also create a Hot lead in Pipedrive
+                        </label>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { twilioGet, twilioContentPost, twilioContentDelete } from "@/lib/twilio";
+import { supabaseAdmin } from "@/lib/supabase";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -110,12 +111,35 @@ export async function POST(req: NextRequest) {
       approvalError = e.message || "Approval submission failed";
     }
 
+    // 3) Save per-button auto-reply rules (so a tap auto-responds / pushes to Pipedrive)
+    const replyButtons = (b.buttons || []).filter(
+      (x: any) => (x.title || "").trim() && (x.auto || x.pushLead) && (kind === "quick-reply" || x.type === "quick-reply")
+    );
+    if (replyButtons.length) {
+      const db = supabaseAdmin();
+      for (const x of replyButtons) {
+        const trigger = x.title.trim();
+        const row = {
+          trigger,
+          reply: x.auto && x.reply?.trim() ? x.reply.trim() : null,
+          push_pipedrive: !!x.pushLead,
+          block: false,
+          enabled: true,
+        };
+        // upsert by trigger (case-insensitive) so re-creating doesn't duplicate
+        const { data: existing } = await db.from("auto_replies").select("id").ilike("trigger", trigger).maybeSingle();
+        if (existing?.id) await db.from("auto_replies").update(row).eq("id", existing.id);
+        else await db.from("auto_replies").insert(row);
+      }
+    }
+
     return NextResponse.json({
       sid: content.sid,
       name,
       submitted: !approvalError,
       status: approval?.status || (approvalError ? "unsubmitted" : "received"),
       approvalError,
+      autoReplies: replyButtons.length,
     });
   } catch (e: any) {
     return NextResponse.json({ error: e.message || "Failed to create template" }, { status: 500 });

@@ -13,12 +13,19 @@ export async function POST(req: NextRequest) {
     // What we store/show in the inbox bubble
     const displayBody = contentSid ? (label || "[template]") : body;
     const e164 = String(phone).replace(/[^0-9+]/g, "");
+    const wa = e164.replace("+", "");
     const db = supabaseAdmin();
+
+    // Blacklist guard — never message a contact who opted out (STOP/Unsubscribe)
+    const { data: existing } = await db.from("conversations").select("status").eq("wa_phone", wa).maybeSingle();
+    if (existing?.status === "blocked") {
+      return NextResponse.json({ error: "This contact opted out (blacklisted). Message not sent." }, { status: 403 });
+    }
 
     // upsert conversation
     const { data: conv } = await db
       .from("conversations")
-      .upsert({ wa_phone: e164.replace("+", ""), last_body: displayBody, last_at: new Date().toISOString() }, { onConflict: "wa_phone" })
+      .upsert({ wa_phone: wa, last_body: displayBody, last_at: new Date().toISOString() }, { onConflict: "wa_phone" })
       .select()
       .single();
 

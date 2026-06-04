@@ -27,5 +27,5 @@ export async function POST(req: NextRequest) {
   } catch {
     // never fail the callback — Twilio would just retry
   }
-  return new NextResponse("", { status: 204 });
+  return new NextResponse(null, { status: 204 });
 }

@@ -15,8 +15,10 @@ export default function Campaigns() {
   const [tplSid, setTplSid] = useState("");
   const [vars, setVars] = useState<Record<string, string>>({});
   const [raw, setRaw] = useState("");
-  const [schedule, setSchedule] = useState(false);
-  const [sendAt, setSendAt] = useState("");
+  const [mode, setMode] = useState<"now" | "later" | "drip">("now");
+  const [sendAt, setSendAt] = useState(""); // for "later"
+  const [perBatch, setPerBatch] = useState(50); // drip: recipients per batch
+  const [intervalMin, setIntervalMin] = useState(120); // drip: minutes between batches
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number; sent: number; skipped: number; failed: number } | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -94,6 +96,13 @@ export default function Campaigns() {
 
   const estUsd = numbers.length * RATES.twilioPerMessage;
 
+  // Drip plan summary (batches every interval; first batch now)
+  const dripChunks = Math.ceil(numbers.length / Math.max(perBatch, 1));
+  const dripDurationMin = Math.max(0, dripChunks - 1) * intervalMin;
+  const drip = numbers.length
+    ? { chunks: dripChunks, fits: dripDurationMin <= 7 * 24 * 60, finishLabel: new Date(Date.now() + dripDurationMin * 60000).toLocaleString() }
+    : null;
+
   function onFile(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
     if (!f) return;
@@ -112,30 +121,31 @@ export default function Campaigns() {
       if (!confirm(`Heads up: this would push you to ${sentToday + numbers.length} sends in 24h, over the recommended ${DAILY_CAP} cap for a ramping number. Sending too much too fast can drop your quality rating and pause templates. Continue anyway?`)) return;
     }
 
-    let iso: string | undefined;
-    if (schedule) {
-      if (!sendAt) return setErr("Pick a schedule time.");
-      const t = new Date(sendAt).getTime();
-      const mins = (t - Date.now()) / 60000;
-      if (mins < 15 || mins > 7 * 24 * 60) return setErr("Schedule must be 15 minutes to 7 days from now.");
-      iso = new Date(sendAt).toISOString();
+    // Validate timing per mode
+    if (mode === "later") {
+      if (!sendAt) return setErr("Pick a date & time.");
+      const mins = (new Date(sendAt).getTime() - Date.now()) / 60000;
+      if (mins < 15 || mins > 7 * 24 * 60) return setErr("Pick a time between 15 minutes and 7 days from now.");
+    }
+    if (mode === "drip" && drip && !drip.fits) {
+      return setErr(`At ${perBatch} every ${humanInterval(intervalMin)}, this would take longer than Twilio's 7-day limit. Use a bigger batch, a shorter interval, or fewer recipients.`);
     }
 
-    const label = renderLabel(tpl, vars);
-    const verb = schedule ? `schedule for ${new Date(sendAt).toLocaleString()}` : "send now";
+    const recipients = numbers.map((p) => ({ phone: p, vars: Object.keys(vars).length ? vars : undefined }));
+    const calls = buildPlan(recipients); // [{ batch, sendAt? }]
+    const verb = mode === "now" ? "send now" : mode === "later" ? `schedule for ${new Date(sendAt).toLocaleString()}` : `drip ${perBatch} every ${humanInterval(intervalMin)} (finishes ${drip?.finishLabel})`;
     if (!confirm(`This will ${verb} to ${numbers.length} recipient(s) using "${tpl?.name}". Blacklisted contacts are skipped. Continue?`)) return;
 
+    const label = renderLabel(tpl, vars);
     setRunning(true);
-    const recipients = numbers.map((p) => ({ phone: p, vars: Object.keys(vars).length ? vars : undefined }));
     let done = 0, sent = 0, skipped = 0, failed = 0;
     setProgress({ done: 0, total: recipients.length, sent: 0, skipped: 0, failed: 0 });
     try {
-      for (let i = 0; i < recipients.length; i += BATCH) {
-        const batch = recipients.slice(i, i + BATCH);
+      for (const call of calls) {
         const res = await fetch("/api/campaign/send", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ recipients: batch, contentSid: tplSid, label, sendAt: iso, from: sender || undefined }),
+          body: JSON.stringify({ recipients: call.batch, contentSid: tplSid, label, sendAt: call.sendAt, from: sender || undefined }),
         });
         const d = await res.json();
         if (!res.ok) throw new Error(d.error || "Batch failed");
@@ -147,12 +157,30 @@ export default function Campaigns() {
         }
         setProgress({ done, total: recipients.length, sent, skipped, failed });
       }
-      setDoneMsg(`${schedule ? "Scheduled" : "Sent"} ${sent} · skipped ${skipped} (blacklisted) · failed ${failed}.`);
+      const tail = mode === "drip" ? ` Will keep sending until ${drip?.finishLabel}.` : "";
+      setDoneMsg(`${mode === "now" ? "Sent" : "Scheduled"} ${sent} · skipped ${skipped} (blacklisted) · failed ${failed}.${tail}`);
     } catch (e: any) {
       setErr(e.message);
     } finally {
       setRunning(false);
     }
+  }
+
+  // Build the list of API calls (each <=25 recipients) with per-batch send times.
+  function buildPlan(recipients: any[]) {
+    const calls: { batch: any[]; sendAt?: string }[] = [];
+    const push = (arr: any[], sendAt?: string) => { for (let i = 0; i < arr.length; i += BATCH) calls.push({ batch: arr.slice(i, i + BATCH), sendAt }); };
+    if (mode === "now") push(recipients);
+    else if (mode === "later") push(recipients, new Date(sendAt).toISOString());
+    else {
+      // drip: chunk of perBatch every intervalMin; first chunk goes now
+      for (let c = 0, i = 0; i < recipients.length; c++, i += perBatch) {
+        const chunk = recipients.slice(i, i + perBatch);
+        const sendAt = c === 0 ? undefined : new Date(Date.now() + c * intervalMin * 60000).toISOString();
+        push(chunk, sendAt);
+      }
+    }
+    return calls;
   }
 
   return (
@@ -226,11 +254,45 @@ export default function Campaigns() {
         </select>
       </Section>
 
-      <Section title="4 · Schedule (optional)">
-        <label style={{ fontSize: 14, display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
-          <input type="checkbox" checked={schedule} onChange={(e) => setSchedule(e.target.checked)} /> Schedule for later (15 min – 7 days)
-        </label>
-        {schedule && <input type="datetime-local" value={sendAt} onChange={(e) => setSendAt(e.target.value)} style={{ ...input, marginTop: 8, maxWidth: 280 }} />}
+      <Section title="4 · When to send">
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {([["now", "Send now"], ["later", "Send later"], ["drip", "Spread it out"]] as const).map(([m, lbl]) => (
+            <button key={m} onClick={() => setMode(m)} style={{ ...pill, ...(mode === m ? pillActive : {}) }}>{lbl}</button>
+          ))}
+        </div>
+
+        {mode === "later" && (
+          <div style={{ marginTop: 12 }}>
+            <input type="datetime-local" value={sendAt} onChange={(e) => setSendAt(e.target.value)} style={{ ...input, maxWidth: 280 }} />
+            <div style={{ fontSize: 12, color: "#9a958c", marginTop: 6 }}>Anytime from 15 minutes to 7 days from now.</div>
+          </div>
+        )}
+
+        {mode === "drip" && (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: 13, color: "#6B6862", marginBottom: 8 }}>Send a small batch, wait, repeat — the gentle way to protect your number. Pick a pace:</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+              {[{ p: 50, m: 120, l: "50 every 2 hours" }, { p: 100, m: 60, l: "100 every hour" }, { p: 25, m: 30, l: "25 every 30 min" }].map((x) => (
+                <button key={x.l} onClick={() => { setPerBatch(x.p); setIntervalMin(x.m); }} style={{ ...pill, ...(perBatch === x.p && intervalMin === x.m ? pillActive : {}) }}>{x.l}</button>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", fontSize: 14 }}>
+              <span style={{ color: "#6B6862" }}>Send</span>
+              <input type="number" value={perBatch} min={1} max={250} onChange={(e) => setPerBatch(parseInt(e.target.value || "50", 10))} style={{ ...input, width: 80, marginBottom: 0 }} />
+              <span style={{ color: "#6B6862" }}>recipients every</span>
+              <select value={intervalMin} onChange={(e) => setIntervalMin(parseInt(e.target.value, 10))} style={{ ...input, width: 130, marginBottom: 0 }}>
+                {[30, 60, 120, 180, 240, 360, 720, 1440].map((m) => <option key={m} value={m}>{humanInterval(m)}</option>)}
+              </select>
+            </div>
+            {drip && (
+              <div style={{ marginTop: 10, fontSize: 13, color: drip.fits ? "#137333" : "#b00020", background: drip.fits ? "#e7f4ea" : "#fdecea", padding: 10, borderRadius: 8 }}>
+                {drip.fits
+                  ? `${numbers.length} recipients in ${drip.chunks} batch${drip.chunks === 1 ? "" : "es"} — first batch now, finishes around ${drip.finishLabel}.`
+                  : `Too slow for this list — it would take over 7 days (Twilio's limit). Use a bigger batch or shorter interval.`}
+              </div>
+            )}
+          </div>
+        )}
       </Section>
 
       {/* Compliance — keeps the number's quality rating healthy */}
@@ -266,13 +328,13 @@ export default function Campaigns() {
             <div style={{ height: "100%", width: `${(progress.done / progress.total) * 100}%`, background: "#137333" }} />
           </div>
           <div style={{ fontSize: 12, color: "#6B6862", marginTop: 6 }}>
-            {progress.done}/{progress.total} processed · {progress.sent} {schedule ? "scheduled" : "sent"} · {progress.skipped} skipped · {progress.failed} failed
+            {progress.done}/{progress.total} processed · {progress.sent} {mode === "now" ? "sent" : "scheduled"} · {progress.skipped} skipped · {progress.failed} failed
           </div>
         </div>
       )}
 
       <button onClick={run} disabled={running} style={{ ...btn, background: "#137333", opacity: running ? 0.6 : 1 }}>
-        {running ? "Working…" : schedule ? "Schedule campaign" : "Send campaign"}
+        {running ? "Working…" : mode === "now" ? "Send campaign" : mode === "later" ? "Schedule campaign" : "Start drip campaign"}
       </button>
 
       <div style={{ marginTop: 22, fontSize: 12, color: "#9a958c" }}>
@@ -282,6 +344,10 @@ export default function Campaigns() {
   );
 }
 
+function humanInterval(min: number) {
+  if (min % 60 === 0) { const h = min / 60; return `${h} hour${h === 1 ? "" : "s"}`; }
+  return `${min} min`;
+}
 function renderLabel(tpl: Tpl | undefined, vars: Record<string, string>) {
   let s = tpl?.body || (tpl ? `[${tpl.name}]` : "");
   for (const [k, v] of Object.entries(vars)) s = s.replace(new RegExp(`\\{\\{${k}\\}\\}`, "g"), v || `{{${k}}}`);

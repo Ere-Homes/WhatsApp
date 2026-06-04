@@ -44,6 +44,14 @@ export async function GET(req: NextRequest) {
       if (rec) allTime = Math.abs(parseFloat(rec.price || "0"));
     } catch {}
 
+    // FX rates from USD (Twilio bills in USD). AED is pegged; GBP fetched live.
+    let fx: Record<string, number> = { USD: 1, AED: 3.6725, GBP: 0.79 };
+    try {
+      const r = await fetch("https://open.er-api.com/v6/latest/USD");
+      const j: any = await r.json();
+      if (j?.rates) fx = { USD: 1, AED: j.rates.AED ?? fx.AED, GBP: j.rates.GBP ?? fx.GBP };
+    } catch {}
+
     return NextResponse.json({
       balance,
       range: { days, since: sinceStr },
@@ -54,6 +62,7 @@ export async function GET(req: NextRequest) {
         currency,
       },
       byDay,
+      fx,
     });
   } catch (e: any) {
     return NextResponse.json({ error: e.message || "Failed to load billing" }, { status: 500 });

@@ -7,13 +7,23 @@ type Data = {
   range: { days: number; since: string };
   spend: { total: number; allTime: number; avgPerDay: number; currency: string };
   byDay: { day: string; spend: number }[];
+  fx: Record<string, number>;
 };
+
+const SYMBOL: Record<string, string> = { USD: "$", AED: "AED ", GBP: "£" };
 
 export default function Billing() {
   const [days, setDays] = useState(30);
+  const [cur, setCur] = useState("USD");
   const [data, setData] = useState<Data | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+
+  // Convert a USD amount (Twilio bills in USD) to the selected currency.
+  const fmt = (usd: number) => {
+    const rate = data?.fx?.[cur] ?? 1;
+    return `${SYMBOL[cur] || ""}${(usd * rate).toFixed(2)}`;
+  };
 
   async function load(d: number) {
     setLoading(true); setErr(null);
@@ -27,17 +37,23 @@ export default function Billing() {
   useEffect(() => { load(days); }, [days]);
 
   const s = data?.spend;
-  const cur = s?.currency || data?.balance?.currency || "USD";
   const maxDay = Math.max(0.0001, ...(data?.byDay || []).map((d) => d.spend));
 
   return (
     <div style={{ maxWidth: 1000, margin: "0 auto", padding: "28px 24px" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18, gap: 10, flexWrap: "wrap" }}>
         <h1 style={{ fontFamily: "Georgia, serif", fontWeight: 400, fontSize: 24, margin: 0 }}>Billing</h1>
-        <div style={{ display: "flex", gap: 6 }}>
-          {[7, 30, 90].map((d) => (
-            <button key={d} onClick={() => setDays(d)} style={{ ...tab, ...(days === d ? tabActive : {}) }}>{d}d</button>
-          ))}
+        <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: 6 }}>
+            {["USD", "AED", "GBP"].map((c) => (
+              <button key={c} onClick={() => setCur(c)} style={{ ...tab, ...(cur === c ? tabActive : {}) }}>{c}</button>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 6 }}>
+            {[7, 30, 90].map((d) => (
+              <button key={d} onClick={() => setDays(d)} style={{ ...tab, ...(days === d ? tabActive : {}) }}>{d}d</button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -51,8 +67,9 @@ export default function Billing() {
             <div>
               <div style={{ fontSize: 12, letterSpacing: 1, textTransform: "uppercase", color: "#cfccc6" }}>Twilio balance remaining</div>
               <div style={{ fontSize: 38, fontFamily: "Georgia, serif", marginTop: 6 }}>
-                {data.balance ? `${data.balance.currency} ${parseFloat(data.balance.balance).toFixed(2)}` : "—"}
+                {data.balance ? fmt(parseFloat(data.balance.balance)) : "—"}
               </div>
+              {cur !== "USD" && data.balance && <div style={{ fontSize: 12, color: "#9a958c", marginTop: 2 }}>${parseFloat(data.balance.balance).toFixed(2)} USD</div>}
             </div>
             <a href="https://console.twilio.com/us1/billing/manage-billing/billing-overview" target="_blank" rel="noreferrer"
                style={{ color: "#141414", background: "#fff", padding: "10px 18px", borderRadius: 8, textDecoration: "none", fontSize: 12, letterSpacing: 1, textTransform: "uppercase" }}>
@@ -62,9 +79,9 @@ export default function Billing() {
 
           {/* Spend scorecards */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12, marginBottom: 22 }}>
-            <Card label={`Spend · last ${data.range.days}d`} value={`${cur} ${s!.total.toFixed(2)}`} />
-            <Card label="Avg / day" value={`${cur} ${s!.avgPerDay.toFixed(2)}`} />
-            <Card label="Spend · all time" value={`${cur} ${s!.allTime.toFixed(2)}`} />
+            <Card label={`Spend · last ${data.range.days}d`} value={fmt(s!.total)} />
+            <Card label="Avg / day" value={fmt(s!.avgPerDay)} />
+            <Card label="Spend · all time" value={fmt(s!.allTime)} />
           </div>
 
           {/* Spend by day */}
@@ -73,7 +90,7 @@ export default function Billing() {
             {data.byDay.length === 0 && <div style={{ color: "#6B6862" }}>No spend recorded in this range yet.</div>}
             <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 150 }}>
               {data.byDay.map((d) => (
-                <div key={d.day} style={{ flex: 1, textAlign: "center" }} title={`${cur} ${d.spend.toFixed(4)}`}>
+                <div key={d.day} style={{ flex: 1, textAlign: "center" }} title={`${d.day}: ${fmt(d.spend)}`}>
                   <div style={{ display: "flex", flexDirection: "column", justifyContent: "flex-end", height: 120 }}>
                     <div style={{ height: `${(d.spend / maxDay) * 100}%`, background: "#137333", minHeight: d.spend > 0 ? 2 : 0 }} />
                   </div>

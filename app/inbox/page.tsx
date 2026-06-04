@@ -104,7 +104,8 @@ export default function Inbox() {
             <>
               <div style={{ padding: "14px 18px", borderBottom: "1px solid #E4E1DB", background: "#fff", fontWeight: 600, display: "flex", alignItems: "center", gap: 12 }}>
                 {isMobile && <button onClick={() => setActive(null)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", padding: 0 }}>←</button>}
-                <span>{active.name || "+" + active.wa_phone}</span>
+                <span style={{ flex: 1 }}>{active.name || "+" + active.wa_phone}</span>
+                <PushToPipedrive conv={active} lastInbound={[...msgs].reverse().find((m) => m.direction === "in")?.body || null} />
               </div>
               <div style={{ flex: 1, overflowY: "auto", padding: 18 }}>
                 {msgs.map((m) => (
@@ -131,6 +132,52 @@ export default function Inbox() {
         </main>
       )}
     </div>
+  );
+}
+
+// Push this conversation into Pipedrive as a Hot lead (direct, no Ulgebra).
+function PushToPipedrive({ conv, lastInbound }: { conv: Conv; lastInbound: string | null }) {
+  const [state, setState] = useState<"idle" | "busy" | "done" | "err">("idle");
+  const [err, setErr] = useState("");
+  async function push() {
+    setState("busy");
+    setErr("");
+    try {
+      const note =
+        `Pushed from ERE WhatsApp.\nPhone: +${conv.wa_phone}` +
+        (lastInbound ? `\nLast reply: "${lastInbound}"` : "");
+      const res = await fetch("/api/pipedrive/push", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: "+" + conv.wa_phone, name: conv.name || undefined, note }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Failed");
+      setState("done");
+    } catch (e: any) {
+      setErr(e.message);
+      setState("err");
+    }
+  }
+  return (
+    <button
+      onClick={push}
+      disabled={state === "busy" || state === "done"}
+      title={err || "Create a Hot lead in Pipedrive"}
+      style={{
+        padding: "8px 14px",
+        background: state === "done" ? "#137333" : "#fff",
+        color: state === "done" ? "#fff" : "#141414",
+        border: "1px solid " + (state === "err" ? "#b00020" : "#E4E1DB"),
+        borderRadius: 8,
+        cursor: "pointer",
+        fontSize: 12,
+        letterSpacing: 0.5,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {state === "busy" ? "Pushing…" : state === "done" ? "✓ In Pipedrive" : state === "err" ? "Retry → Pipedrive" : "→ Pipedrive"}
+    </button>
   );
 }
 

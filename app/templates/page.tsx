@@ -11,6 +11,7 @@ type Tpl = {
   rejection_reason: string | null;
   variables: Record<string, string>;
   body: string | null;
+  replyButtons: string[];
   updated: string;
 };
 
@@ -43,6 +44,7 @@ export default function Templates() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
+  const [autoFor, setAutoFor] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -174,7 +176,12 @@ export default function Templates() {
               </div>
             )}
 
-            <div style={{ display: "flex", gap: 8, marginTop: 14, borderTop: "1px solid #F0EEE9", paddingTop: 12 }}>
+            <div style={{ display: "flex", gap: 8, marginTop: 14, borderTop: "1px solid #F0EEE9", paddingTop: 12, flexWrap: "wrap" }}>
+              {t.replyButtons.length > 0 && (
+                <button onClick={() => setAutoFor(autoFor === t.sid ? null : t.sid)} style={{ ...action, fontWeight: 600 }}>
+                  {autoFor === t.sid ? "Hide auto-replies" : `Auto-replies (${t.replyButtons.length})`}
+                </button>
+              )}
               <button onClick={() => duplicateTpl(t)} disabled={busySid === t.sid} style={action}>
                 {busySid === t.sid ? "…" : "Duplicate"}
               </button>
@@ -182,9 +189,81 @@ export default function Templates() {
                 Delete
               </button>
             </div>
+
+            {autoFor === t.sid && <AutoReplyConfig buttons={t.replyButtons} />}
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// Template-first auto-reply setup: shows the selected template's reply
+// buttons (keywords) and lets you set what each one replies with.
+function AutoReplyConfig({ buttons }: { buttons: string[] }) {
+  const [rules, setRules] = useState<Record<string, any>>({});
+  const [loading, setLoading] = useState(true);
+  const [savedKey, setSavedKey] = useState<string | null>(null);
+
+  async function load() {
+    setLoading(true);
+    const res = await fetch("/api/auto-replies");
+    const d = await res.json();
+    const byTrigger: Record<string, any> = {};
+    for (const r of d.rules || []) byTrigger[(r.trigger || "").toLowerCase()] = r;
+    const map: Record<string, any> = {};
+    for (const b of buttons) {
+      const ex = byTrigger[b.toLowerCase()];
+      map[b] = ex
+        ? { id: ex.id, reply: ex.reply || "", push_pipedrive: !!ex.push_pipedrive, block: !!ex.block, enabled: ex.enabled !== false }
+        : { reply: "", push_pipedrive: false, block: false, enabled: true };
+    }
+    setRules(map);
+    setLoading(false);
+  }
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+
+  async function save(trigger: string) {
+    const r = rules[trigger];
+    const res = await fetch("/api/auto-replies", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: r.id, trigger, reply: r.reply, push_pipedrive: r.push_pipedrive, block: r.block, enabled: r.enabled }),
+    });
+    const d = await res.json();
+    if (res.ok) { setRules({ ...rules, [trigger]: { ...r, id: d.rule.id } }); setSavedKey(trigger); setTimeout(() => setSavedKey(null), 1500); }
+    else alert(d.error || "Save failed");
+  }
+  function set(trigger: string, patch: any) { setRules({ ...rules, [trigger]: { ...rules[trigger], ...patch } }); }
+
+  return (
+    <div style={{ marginTop: 12, padding: 14, background: "#FBFAF7", border: "1px solid #F0EEE9", borderRadius: 10 }}>
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Auto-replies for this template’s buttons</div>
+      <div style={{ fontSize: 12, color: "#6B6862", marginBottom: 10 }}>When a contact taps a button, the app sends the reply (and optionally creates a Pipedrive lead).</div>
+      {loading && <div style={{ color: "#6B6862", fontSize: 13 }}>Loading…</div>}
+      {!loading && buttons.map((b) => {
+        const r = rules[b] || {};
+        return (
+          <div key={b} style={{ borderTop: "1px solid #F0EEE9", paddingTop: 10, marginTop: 10 }}>
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 6 }}>Keyword: “{b}”</div>
+            <textarea value={r.reply || ""} onChange={(e) => set(b, { reply: e.target.value })} rows={2} placeholder="Reply sent automatically when this button is tapped…" style={{ ...input, resize: "vertical" }} />
+            <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center", marginTop: 4 }}>
+              <label style={{ fontSize: 13, display: "flex", gap: 6, alignItems: "center", cursor: "pointer", color: "#137333" }}>
+                <input type="checkbox" checked={!!r.push_pipedrive} onChange={(e) => set(b, { push_pipedrive: e.target.checked })} /> Create Hot lead in Pipedrive
+              </label>
+              <label style={{ fontSize: 13, display: "flex", gap: 6, alignItems: "center", cursor: "pointer", color: "#b00020" }}>
+                <input type="checkbox" checked={!!r.block} onChange={(e) => set(b, { block: e.target.checked })} /> Block (opt-out)
+              </label>
+              <label style={{ fontSize: 13, display: "flex", gap: 6, alignItems: "center", cursor: "pointer" }}>
+                <input type="checkbox" checked={r.enabled !== false} onChange={(e) => set(b, { enabled: e.target.checked })} /> Enabled
+              </label>
+              <button onClick={() => save(b)} style={{ ...pillActive, padding: "6px 16px", borderRadius: 8, cursor: "pointer", border: "none" }}>
+                {savedKey === b ? "Saved ✓" : "Save"}
+              </button>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -396,55 +475,30 @@ function NewTemplate({ onCreated }: { onCreated: () => void }) {
             </span>
             <button onClick={addButton} disabled={buttons.length >= maxButtons} style={{ ...pill, padding: "4px 12px" }}>+ Add</button>
           </div>
-          {buttons.map((bt, i) => {
-            const isReply = kind === "quick-reply" || bt.type === "quick-reply";
-            return (
-              <div key={i} style={{ border: "1px solid #F0EEE9", borderRadius: 10, padding: 10, marginBottom: 8 }}>
-                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  {kind === "card" && (
-                    <select value={bt.type} onChange={(e) => setBtn(i, { type: e.target.value as any })} style={{ ...input, width: 110, marginBottom: 0 }}>
-                      <option value="url">Link</option>
-                      <option value="phone">Call</option>
-                      <option value="quick-reply">Reply</option>
-                    </select>
-                  )}
-                  <input value={bt.title} onChange={(e) => setBtn(i, { title: e.target.value })} placeholder="Button text" style={{ ...input, flex: 1, marginBottom: 0 }} />
-                  {kind === "card" && bt.type === "url" && (
-                    <input value={bt.url || ""} onChange={(e) => setBtn(i, { url: e.target.value })} placeholder="https://…" style={{ ...input, flex: 1, marginBottom: 0 }} />
-                  )}
-                  {kind === "card" && bt.type === "phone" && (
-                    <input value={bt.phone || ""} onChange={(e) => setBtn(i, { phone: e.target.value })} placeholder="+9715…" style={{ ...input, flex: 1, marginBottom: 0 }} />
-                  )}
-                  <button onClick={() => setButtons(buttons.filter((_, idx) => idx !== i))} style={{ ...pill, padding: "6px 10px", color: "#b00020" }}>✕</button>
-                </div>
-
-                {/* Auto-reply: only reply buttons trigger an inbound message back to us */}
-                {isReply && bt.title.trim() && (
-                  <div style={{ marginTop: 8, paddingLeft: 2 }}>
-                    <label style={{ fontSize: 13, display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
-                      <input type="checkbox" checked={!!bt.auto} onChange={(e) => setBtn(i, { auto: e.target.checked })} />
-                      Auto-reply when “{bt.title.trim()}” is tapped
-                    </label>
-                    {bt.auto && (
-                      <>
-                        <textarea
-                          value={bt.reply || ""}
-                          onChange={(e) => setBtn(i, { reply: e.target.value })}
-                          rows={2}
-                          placeholder="Reply message sent automatically on tap…"
-                          style={{ ...input, resize: "vertical", marginTop: 6 }}
-                        />
-                        <label style={{ fontSize: 12, color: "#137333", display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
-                          <input type="checkbox" checked={!!bt.pushLead} onChange={(e) => setBtn(i, { pushLead: e.target.checked })} />
-                          Also create a Hot lead in Pipedrive
-                        </label>
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+          {buttons.map((bt, i) => (
+            <div key={i} style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center" }}>
+              {kind === "card" && (
+                <select value={bt.type} onChange={(e) => setBtn(i, { type: e.target.value as any })} style={{ ...input, width: 110, marginBottom: 0 }}>
+                  <option value="url">Link</option>
+                  <option value="phone">Call</option>
+                  <option value="quick-reply">Reply</option>
+                </select>
+              )}
+              <input value={bt.title} onChange={(e) => setBtn(i, { title: e.target.value })} placeholder="Button text" style={{ ...input, flex: 1, marginBottom: 0 }} />
+              {kind === "card" && bt.type === "url" && (
+                <input value={bt.url || ""} onChange={(e) => setBtn(i, { url: e.target.value })} placeholder="https://…" style={{ ...input, flex: 1, marginBottom: 0 }} />
+              )}
+              {kind === "card" && bt.type === "phone" && (
+                <input value={bt.phone || ""} onChange={(e) => setBtn(i, { phone: e.target.value })} placeholder="+9715…" style={{ ...input, flex: 1, marginBottom: 0 }} />
+              )}
+              <button onClick={() => setButtons(buttons.filter((_, idx) => idx !== i))} style={{ ...pill, padding: "6px 10px", color: "#b00020" }}>✕</button>
+            </div>
+          ))}
+          {kind === "quick-reply" && (
+            <div style={{ fontSize: 12, color: "#9a958c", marginTop: 4 }}>
+              Set up what these buttons reply with under “Auto-replies” on the template card after it’s created.
+            </div>
+          )}
         </div>
       )}
 

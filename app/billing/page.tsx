@@ -5,10 +5,7 @@ import { RATES, RATE_ROWS } from "@/lib/rates";
 type Data = {
   balance: { balance: string; currency: string } | null;
   range: { days: number; since: string };
-  spend: {
-    total: number; currency: string; messages: number; pricedMessages: number;
-    avgPerMessage: number; outbound: number; inbound: number; capped: boolean;
-  };
+  spend: { total: number; allTime: number; avgPerDay: number; currency: string };
   byDay: { day: string; spend: number }[];
 };
 
@@ -64,23 +61,16 @@ export default function Billing() {
           </div>
 
           {/* Spend scorecards */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12, marginBottom: 22 }}>
-            <Card label={`Spend · last ${data.range.days}d`} value={`${cur} ${s!.total.toFixed(4)}`} />
-            <Card label="Outbound spend" value={`${cur} ${s!.outbound.toFixed(4)}`} />
-            <Card label="Avg / message" value={`${cur} ${s!.avgPerMessage.toFixed(4)}`} sub={`${s!.pricedMessages} priced`} />
-            <Card label="Messages" value={s!.messages} sub={`${s!.pricedMessages} with a price`} />
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12, marginBottom: 22 }}>
+            <Card label={`Spend · last ${data.range.days}d`} value={`${cur} ${s!.total.toFixed(2)}`} />
+            <Card label="Avg / day" value={`${cur} ${s!.avgPerDay.toFixed(2)}`} />
+            <Card label="Spend · all time" value={`${cur} ${s!.allTime.toFixed(2)}`} />
           </div>
-
-          {s!.capped && (
-            <div style={{ fontSize: 12, color: "#9a6700", marginBottom: 12 }}>
-              ⚠ Spend capped to recent pages — narrow the range for an exact total.
-            </div>
-          )}
 
           {/* Spend by day */}
           <div style={{ background: "#fff", border: "1px solid #E4E1DB", borderRadius: 12, padding: 18 }}>
             <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>Spend by day (since {data.range.since})</div>
-            {data.byDay.length === 0 && <div style={{ color: "#6B6862" }}>No priced messages in range.</div>}
+            {data.byDay.length === 0 && <div style={{ color: "#6B6862" }}>No spend recorded in this range yet.</div>}
             <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 150 }}>
               {data.byDay.map((d) => (
                 <div key={d.day} style={{ flex: 1, textAlign: "center" }} title={`${cur} ${d.spend.toFixed(4)}`}>
@@ -107,12 +97,11 @@ export default function Billing() {
             ))}
             <div style={{ fontSize: 11, color: "#9a958c", marginTop: 10 }}>
               Reference only. Marketing is country-specific (UAE not published) — set it in <code>lib/rates.ts</code>.
-              Estimated floor for this window: <b>{cur} {(s!.messages * RATES.twilioPerMessage).toFixed(2)}</b> ({s!.messages} msgs × ${RATES.twilioPerMessage}).
             </div>
           </div>
 
           <div style={{ fontSize: 11, color: "#9a958c", marginTop: 14 }}>
-            Spend is computed from Twilio message prices for the selected window. Balance is your live Twilio prepaid balance.
+            Spend comes from Twilio Usage Records (your actual billed total). Balance is your live Twilio prepaid balance.
           </div>
         </>
       )}

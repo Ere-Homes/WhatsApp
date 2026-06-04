@@ -18,6 +18,12 @@ export async function GET() {
         const approval = c.approval_requests || {};
         const types = c.types || {};
         const typeKey = Object.keys(types)[0] || null;
+        const actions = (typeKey ? types[typeKey]?.actions : null) || [];
+        // Quick-reply button titles — these become the tappable keyword triggers
+        const replyButtons = actions
+          .filter((a: any) => (a?.type || "").toUpperCase() === "QUICK_REPLY")
+          .map((a: any) => a.title)
+          .filter(Boolean);
         out.push({
           sid: c.sid,
           name: c.friendly_name,
@@ -28,6 +34,7 @@ export async function GET() {
           rejection_reason: approval.rejection_reason || null,
           variables: c.variables || {},
           body: types[typeKey || ""]?.body || null,
+          replyButtons,
           updated: c.date_updated,
         });
       }

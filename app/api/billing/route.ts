@@ -4,14 +4,17 @@ import { twilioCreds, twilioGet } from "@/lib/twilio";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Account balance + messaging spend computed from message prices.
+// Account balance + real spend from Twilio Usage Records (the actual billed
+// amount). Per-message `price` is unreliable for WhatsApp, so we use the
+// `totalprice` usage category instead.
 export async function GET(req: NextRequest) {
   try {
     const { sid } = twilioCreds();
-    const days = Math.min(Math.max(parseInt(req.nextUrl.searchParams.get("days") || "30", 10), 1), 90);
-    const maxPages = Math.min(parseInt(req.nextUrl.searchParams.get("maxPages") || "10", 10), 40);
+    const days = Math.min(Math.max(parseInt(req.nextUrl.searchParams.get("days") || "30", 10), 1), 365);
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const sinceStr = since.toISOString().slice(0, 10);
 
-    // Remaining account balance
+    // Live prepaid balance
     let balance: { balance: string; currency: string } | null = null;
     try {
       const b: any = await twilioGet(`/2010-04-01/Accounts/${sid}/Balance.json`);
@@ -20,54 +23,37 @@ export async function GET(req: NextRequest) {
       balance = null;
     }
 
-    // Spend from message prices over the range
-    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-    const sinceStr = since.toISOString().slice(0, 10);
-    let url: string | null =
-      `https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json?PageSize=200&DateSent%3E=${sinceStr}`;
-
-    let total = 0,
-      priced = 0,
-      count = 0;
+    // Daily total spend over the window (actual billed amount)
+    const daily: any = await twilioGet(
+      `/2010-04-01/Accounts/${sid}/Usage/Records/Daily.json?Category=totalprice&StartDate=${sinceStr}&PageSize=366`
+    );
+    let total = 0;
     let currency = balance?.currency || "USD";
-    const byDay: Record<string, number> = {};
-    const byDir: Record<string, number> = { outbound: 0, inbound: 0 };
-    let pages = 0;
+    const byDay = (daily.usage_records || []).map((r: any) => {
+      const spend = Math.abs(parseFloat(r.price || "0"));
+      total += spend;
+      if (r.price_unit) currency = String(r.price_unit).toUpperCase();
+      return { day: (r.start_date || "").slice(0, 10), spend: Math.round(spend * 10000) / 10000 };
+    });
 
-    while (url && pages++ < maxPages) {
-      const data: any = await twilioGet(url);
-      for (const m of data.messages || []) {
-        count++;
-        if (m.price) {
-          const p = Math.abs(parseFloat(m.price));
-          total += p;
-          priced++;
-          if (m.price_unit) currency = m.price_unit;
-          const day = m.date_sent ? new Date(m.date_sent).toISOString().slice(0, 10) : "—";
-          byDay[day] = (byDay[day] || 0) + p;
-          const dir = (m.direction || "").startsWith("outbound") ? "outbound" : "inbound";
-          byDir[dir] += p;
-        }
-      }
-      url = data.next_page_uri ? `https://api.twilio.com${data.next_page_uri}` : null;
-    }
+    // All-time spend, for context
+    let allTime = 0;
+    try {
+      const at: any = await twilioGet(`/2010-04-01/Accounts/${sid}/Usage/Records/AllTime.json?Category=totalprice`);
+      const rec = (at.usage_records || [])[0];
+      if (rec) allTime = Math.abs(parseFloat(rec.price || "0"));
+    } catch {}
 
     return NextResponse.json({
       balance,
       range: { days, since: sinceStr },
       spend: {
         total: Math.round(total * 10000) / 10000,
+        allTime: Math.round(allTime * 10000) / 10000,
+        avgPerDay: byDay.length ? Math.round((total / byDay.length) * 10000) / 10000 : 0,
         currency,
-        messages: count,
-        pricedMessages: priced,
-        avgPerMessage: priced ? Math.round((total / priced) * 10000) / 10000 : 0,
-        outbound: Math.round(byDir.outbound * 10000) / 10000,
-        inbound: Math.round(byDir.inbound * 10000) / 10000,
-        capped: pages >= maxPages,
       },
-      byDay: Object.entries(byDay)
-        .sort((a, b) => (a[0] < b[0] ? -1 : 1))
-        .map(([day, v]) => ({ day, spend: Math.round(v * 10000) / 10000 })),
+      byDay,
     });
   } catch (e: any) {
     return NextResponse.json({ error: e.message || "Failed to load billing" }, { status: 500 });

@@ -6,9 +6,14 @@ import { supabaseBrowser } from "@/lib/supabase";
 type Tpl = { sid: string; name: string; status: string; body: string | null; variables: Record<string, string> };
 
 const BATCH = 25;
-// Conservative 24h cap to protect quality rating while the number ramps tiers.
-// Meta tiers go 250/1K -> 10K -> 100K as quality stays high; start low.
-const DAILY_CAP = 250;
+// Warm-up profiles. A brand-new WhatsApp sender shouldn't blast its full tier
+// on day one — Meta ramps you (250 -> 1K -> 10K -> 100K) only while quality
+// stays high. Each profile sets a safe 24h cap and a recommended drip pace.
+const WARMUP = [
+  { id: "new", label: "Brand-new", sub: "first few days", cap: 50, batch: 25, interval: 180 },
+  { id: "warming", label: "Warming up", sub: "week 1–2", cap: 250, batch: 50, interval: 120 },
+  { id: "established", label: "Established", sub: "good quality rating", cap: 1000, batch: 100, interval: 60 },
+] as const;
 
 export default function Campaigns() {
   const [tpls, setTpls] = useState<Tpl[]>([]);
@@ -27,11 +32,16 @@ export default function Campaigns() {
   const [sender, setSender] = useState("");
   const [optIn, setOptIn] = useState(false);
   const [sentToday, setSentToday] = useState<number | null>(null);
+  const [warmup, setWarmup] = useState<typeof WARMUP[number]["id"]>("warming");
   const [source, setSource] = useState<"manual" | "crm">("manual");
   const [crmFilters, setCrmFilters] = useState<Record<string, string>>({});
   const [crmLimit, setCrmLimit] = useState(500);
   const [crmLoading, setCrmLoading] = useState(false);
+  const [crmMatch, setCrmMatch] = useState<number | null>(null); // live segment size
   const [options, setOptions] = useState<Record<string, any[]>>({});
+
+  const wu = WARMUP.find((w) => w.id === warmup)!;
+  const DAILY_CAP = wu.cap;
 
   // Lazy-load CRM filter dropdowns the first time the segment tab opens
   useEffect(() => {
@@ -42,6 +52,24 @@ export default function Campaigns() {
       });
     });
   }, [source]); // eslint-disable-line
+
+  // Live, approximate segment size — so you can sanity-check the audience
+  // before loading it. Debounced; recomputes whenever filters change.
+  useEffect(() => {
+    if (source !== "crm") return;
+    setCrmMatch(null);
+    const t = setTimeout(() => {
+      fetch("/api/crm/count", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filters: crmFilters }),
+      })
+        .then((r) => r.json())
+        .then((d) => setCrmMatch(typeof d.count === "number" ? d.count : null))
+        .catch(() => setCrmMatch(null));
+    }, 400);
+    return () => clearTimeout(t);
+  }, [source, JSON.stringify(crmFilters)]); // eslint-disable-line
 
   async function loadSegment() {
     setErr(null);
@@ -240,7 +268,12 @@ export default function Campaigns() {
                 {crmLoading ? "Loading…" : "Load recipients"}
               </button>
             </div>
-            <div style={{ fontSize: 11, color: "#9a958c", marginTop: 6 }}>Pulls only contactable numbers (excludes do-not-call, uncontactable, and switchboards).</div>
+            <div style={{ marginTop: 10, fontSize: 13, padding: "8px 12px", background: "#F7F5F0", borderRadius: 8, color: "#3a3a3a" }}>
+              {crmMatch == null ? "Counting matching contacts…" : (
+                <><b>~{crmMatch.toLocaleString()}</b> contactable contact{crmMatch === 1 ? "" : "s"} match this segment.{crmMatch > crmLimit && <> You’ll load the first <b>{crmLimit.toLocaleString()}</b>.</>}</>
+              )}
+            </div>
+            <div style={{ fontSize: 11, color: "#9a958c", marginTop: 6 }}>Approximate. Excludes do-not-call, uncontactable, and switchboards.</div>
           </div>
         )}
 
@@ -252,6 +285,20 @@ export default function Campaigns() {
           {senders.length === 0 && <option value="">(no sender configured)</option>}
           {senders.map((s) => <option key={s} value={s}>+{s}</option>)}
         </select>
+
+        <div style={{ fontSize: 13, color: "#6B6862", margin: "14px 0 8px" }}>How established is this number? Sets a safe daily cap so a young number doesn’t get flagged.</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {WARMUP.map((w) => (
+            <button
+              key={w.id}
+              onClick={() => { setWarmup(w.id); if (mode === "drip") { setPerBatch(w.batch); setIntervalMin(w.interval); } }}
+              style={{ ...pill, textAlign: "left", lineHeight: 1.3, ...(warmup === w.id ? pillActive : {}) }}
+            >
+              <div style={{ fontWeight: 600 }}>{w.label}</div>
+              <div style={{ fontSize: 11, opacity: 0.8 }}>{w.sub} · cap {w.cap}/day</div>
+            </button>
+          ))}
+        </div>
       </Section>
 
       <Section title="4 · When to send">
@@ -302,8 +349,11 @@ export default function Campaigns() {
           <input type="checkbox" checked={optIn} onChange={(e) => setOptIn(e.target.checked)} style={{ marginTop: 3 }} />
           <span>I confirm these recipients <b>opted in</b> to receive WhatsApp messages from ERE Homes.</span>
         </label>
+        <div style={{ fontSize: 13, background: "#FFF8E6", border: "1px solid #F0E2B8", borderRadius: 8, padding: "8px 12px", marginBottom: 10, color: "#6b5a16" }}>
+          + Make sure this template gives a clear way out (e.g. “Reply STOP to unsubscribe”). When someone replies STOP they’re blacklisted automatically and never messaged again.
+        </div>
         <ul style={{ fontSize: 12, color: "#6B6862", margin: 0, paddingLeft: 18, lineHeight: 1.7 }}>
-          <li>Last 24h sent: <b style={{ color: sentToday != null && sentToday + numbers.length > DAILY_CAP ? "#b00020" : "#137333" }}>{sentToday == null ? "…" : sentToday}</b> · this campaign +{numbers.length} (recommended cap {DAILY_CAP}/24h while ramping)</li>
+          <li>Last 24h sent: <b style={{ color: sentToday != null && sentToday + numbers.length > DAILY_CAP ? "#b00020" : "#137333" }}>{sentToday == null ? "…" : sentToday}</b> · this campaign +{numbers.length} (cap for a <b>{wu.label.toLowerCase()}</b> number: {DAILY_CAP}/24h)</li>
           <li>Template-only (works outside the 24h window) · blacklisted/opted-out contacts are skipped</li>
           <li>Paced well under Twilio’s 80 msg/sec limit; build volume gradually to keep your quality rating high</li>
         </ul>

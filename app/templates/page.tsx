@@ -48,6 +48,7 @@ export default function Templates() {
   const [autoFor, setAutoFor] = useState<string | null>(null);
   const [open, setOpen] = useState<Set<string>>(new Set()); // expanded template cards
   const toggle = (sid: string) => setOpen((p) => { const n = new Set(p); n.has(sid) ? n.delete(sid) : n.add(sid); return n; });
+  const [seed, setSeed] = useState<any>(null); // prefill for the create form (from Duplicate)
 
   async function load() {
     setLoading(true);
@@ -85,25 +86,22 @@ export default function Templates() {
     }
   }
 
-  async function duplicateTpl(t: Tpl) {
-    const name = prompt(`New name for the copy of "${t.name}"`, `${t.name}_copy`);
-    if (!name) return;
-    setBusySid(t.sid);
-    setErr(null);
-    try {
-      const res = await fetch("/api/templates", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ duplicateOf: t.sid, name: name.toLowerCase(), category: t.category }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Duplicate failed");
-      load();
-    } catch (e: any) {
-      setErr(e.message);
-    } finally {
-      setBusySid(null);
-    }
+  // Duplicate = open the create form pre-filled with this template's content,
+  // so it can be edited before submitting (nothing is created until you submit).
+  function duplicateTpl(t: Tpl) {
+    const type = (t.type || "").toLowerCase();
+    const kind = type.includes("card") ? "card" : (t.replyButtons.length || type.includes("quick")) ? "quick-reply" : "text";
+    setSeed({
+      kind,
+      name: `${t.name}_copy`.toLowerCase().replace(/[^a-z0-9_]/g, "_"),
+      category: t.category || "MARKETING",
+      language: t.language || "en",
+      body: t.body || "",
+      buttons: kind === "quick-reply" ? t.replyButtons.map((title) => ({ type: "quick-reply", title })) : [],
+      varDefaults: t.variables || {},
+    });
+    setShowNew(true);
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   return (
@@ -114,7 +112,7 @@ export default function Templates() {
         </h1>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <Link href="/templates/performance" style={{ fontSize: 13, color: "#6B6862", textDecoration: "none", whiteSpace: "nowrap" }}>Performance →</Link>
-          <button onClick={() => setShowNew((s) => !s)} style={{ ...btn, background: showNew ? "#6B6862" : "#137333" }}>
+          <button onClick={() => { if (!showNew) setSeed(null); setShowNew((s) => !s); }} style={{ ...btn, background: showNew ? "#6B6862" : "#137333" }}>
             {showNew ? "Close" : "+ New template"}
           </button>
           <button onClick={load} style={btn}>{loading ? "Loading…" : "Refresh"}</button>
@@ -123,8 +121,11 @@ export default function Templates() {
 
       {showNew && (
         <NewTemplate
+          key={seed ? seed.name : "new"}
+          seed={seed}
           onCreated={() => {
             setShowNew(false);
+            setSeed(null);
             load();
           }}
         />
@@ -288,19 +289,19 @@ type Btn = {
   pushLead?: boolean; // create a Hot lead in Pipedrive on tap
 };
 
-function NewTemplate({ onCreated }: { onCreated: () => void }) {
-  const [kind, setKind] = useState<"text" | "card" | "quick-reply">("text");
-  const [name, setName] = useState("");
-  const [category, setCategory] = useState("MARKETING");
-  const [language, setLanguage] = useState("en");
-  const [body, setBody] = useState("");
+function NewTemplate({ onCreated, seed }: { onCreated: () => void; seed?: any }) {
+  const [kind, setKind] = useState<"text" | "card" | "quick-reply">(seed?.kind ?? "text");
+  const [name, setName] = useState(seed?.name ?? "");
+  const [category, setCategory] = useState(seed?.category ?? "MARKETING");
+  const [language, setLanguage] = useState(seed?.language ?? "en");
+  const [body, setBody] = useState(seed?.body ?? "");
   const [headerType, setHeaderType] = useState<"none" | "text" | "image">("none");
   const [headerText, setHeaderText] = useState("");
   const [footer, setFooter] = useState("");
   const [mediaUrl, setMediaUrl] = useState("");
   const [uploading, setUploading] = useState(false);
-  const [buttons, setButtons] = useState<Btn[]>([]);
-  const [varDefaults, setVarDefaults] = useState<Record<string, string>>({});
+  const [buttons, setButtons] = useState<Btn[]>(seed?.buttons ?? []);
+  const [varDefaults, setVarDefaults] = useState<Record<string, string>>(seed?.varDefaults ?? {});
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -380,7 +381,12 @@ function NewTemplate({ onCreated }: { onCreated: () => void }) {
 
   return (
     <div style={{ ...card, marginBottom: 18, background: "#FBFAF7" }}>
-      <div style={{ fontWeight: 600, marginBottom: 14 }}>New WhatsApp template</div>
+      <div style={{ fontWeight: 600, marginBottom: 14 }}>{seed ? "Duplicate template — edit, then submit" : "New WhatsApp template"}</div>
+      {seed && kind === "card" && (
+        <div style={{ fontSize: 12, color: "#9a6700", background: "#FFF8E6", border: "1px solid #F0E2B8", borderRadius: 8, padding: "8px 12px", marginBottom: 12 }}>
+          Card header image, footer and buttons aren’t carried over — re-add them below before submitting.
+        </div>
+      )}
 
       {/* Type selector */}
       <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>

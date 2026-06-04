@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 
 type Tpl = {
   sid: string;
@@ -109,7 +110,8 @@ export default function Templates() {
         <h1 style={{ fontFamily: "Georgia, serif", fontWeight: 400, fontSize: 24, margin: 0 }}>
           WhatsApp Templates
         </h1>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <Link href="/templates/performance" style={{ fontSize: 13, color: "#6B6862", textDecoration: "none", whiteSpace: "nowrap" }}>Performance →</Link>
           <button onClick={() => setShowNew((s) => !s)} style={{ ...btn, background: showNew ? "#6B6862" : "#137333" }}>
             {showNew ? "Close" : "+ New template"}
           </button>

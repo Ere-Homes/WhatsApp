@@ -26,6 +26,8 @@ create table if not exists messages (
   body          text,
   status        text,                         -- queued | sent | delivered | read | failed | received
   twilio_sid    text,
+  content_sid   text,                         -- template SID used (for template performance)
+  media_url     text,                         -- attachment URL (media messages)
   created_at    timestamptz not null default now()
 );
 

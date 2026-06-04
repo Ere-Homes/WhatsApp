@@ -45,6 +45,33 @@ export async function crmContacts(filters: Record<string, string>, limit: number
   return phones;
 }
 
+// Look up a single CRM contact by a WhatsApp number (E.164 digits, no +).
+// CRM phones are stored inconsistently (e.g. ".0502077152", local "05..."),
+// so we try several format variants against an indexed equality/in lookup.
+const CRM_CONTACT_COLS = "name,community,building,tier,nationality,unit_type,total_transaction_value_aed,number_of_transactions,has_bought_before,has_sold_before,last_transaction_date,do_not_call";
+
+function phoneVariants(wa: string): string[] {
+  const digits = (wa || "").replace(/[^0-9]/g, "");
+  if (!digits) return [];
+  const set = new Set<string>([`+${digits}`, digits]);
+  // UAE: strip 971 country code -> national number, add leading 0 + dotted forms
+  let national = digits;
+  if (digits.startsWith("971")) national = digits.slice(3);
+  for (const n of [national, `0${national}`]) {
+    set.add(n);
+    set.add(`.${n}`); // observed leading-dot format
+  }
+  return Array.from(set);
+}
+
+export async function crmContactByPhone(wa: string) {
+  const variants = phoneVariants(wa);
+  if (!variants.length) return null;
+  const inList = variants.map((v) => `"${v}"`).join(",");
+  const rows = await crmGet(`contacts?or=(phone.in.(${inList}),phone2.in.(${inList}))&select=${CRM_CONTACT_COLS}&limit=1`);
+  return (rows && rows[0]) || null;
+}
+
 // Approximate count of contactable contacts matching filters. Uses the
 // planner's row estimate (Prefer: count=estimated) so it's fast and never
 // trips the anon statement timeout on the 9.48M-row contacts table.

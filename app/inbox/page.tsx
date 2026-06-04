@@ -8,7 +8,16 @@ type Conv = {
   last_body: string | null; last_at: string | null;
   unread?: boolean | null; last_direction?: string | null; last_status?: string | null;
 };
-type Msg = { id: string; conversation: string; direction: string; body: string | null; status: string | null; created_at: string };
+type Msg = { id: string; conversation: string; direction: string; body: string | null; status: string | null; created_at: string; media_url?: string | null };
+
+// Resolve a media URL to something the browser can load. Inbound Twilio URLs
+// need our authenticated proxy; our own Supabase URLs load directly.
+function mediaSrc(url: string) {
+  return url.includes("api.twilio.com") ? `/api/media?url=${encodeURIComponent(url)}` : url;
+}
+function isPdf(url: string) {
+  return /\.pdf($|\?)/i.test(url);
+}
 
 // Delivery ticks for an OUTBOUND message status.
 function Ticks({ status }: { status: string | null | undefined }) {
@@ -131,11 +140,17 @@ export default function Inbox() {
                 <span style={{ flex: 1 }}>{active.name || "+" + active.wa_phone}</span>
                 <PushToPipedrive conv={active} lastInbound={[...msgs].reverse().find((m) => m.direction === "in")?.body || null} />
               </div>
+              <CrmContext phone={active.wa_phone} />
               <div style={{ flex: 1, overflowY: "auto", padding: 18 }}>
                 {msgs.map((m) => (
                   <div key={m.id} style={{ display: "flex", justifyContent: m.direction === "out" ? "flex-end" : "flex-start", marginBottom: 10 }}>
                     <div style={{ maxWidth: "80%", padding: "10px 14px", borderRadius: 12, whiteSpace: "pre-wrap", wordBreak: "break-word", background: m.direction === "out" ? "#DCF8C6" : "#fff", border: "1px solid #E4E1DB", fontSize: 14 }}>
-                      {m.body}
+                      {m.media_url && (
+                        isPdf(m.media_url)
+                          ? <a href={mediaSrc(m.media_url)} target="_blank" rel="noreferrer" style={{ display: "inline-block", marginBottom: m.body && m.body !== "[media]" ? 6 : 0, color: "#1a73e8" }}>Open document ↗</a>
+                          : <img src={mediaSrc(m.media_url)} alt="" style={{ display: "block", maxWidth: "100%", borderRadius: 8, marginBottom: m.body && m.body !== "[media]" ? 6 : 0 }} />
+                      )}
+                      {m.body && m.body !== "[media]" && m.body}
                       <div style={{ fontSize: 10, color: "#9a958c", marginTop: 4, textAlign: "right" }}>
                         {new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                         {m.direction === "out" && <span style={{ marginLeft: 6 }}><Ticks status={m.status} /></span>}
@@ -151,6 +166,7 @@ export default function Inbox() {
                   </select>
                 )}
                 <TemplateSender phone={active.wa_phone} from={sender} onSent={() => { loadMsgs(active.id); loadConvs(); }} />
+                <AttachMedia phone={active.wa_phone} from={sender} onSent={() => { loadMsgs(active.id); loadConvs(); }} />
                 <input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} placeholder="Type a message" style={{ flex: 1, padding: "12px 14px", border: "1px solid #E4E1DB", borderRadius: 8, fontSize: 14, minWidth: 0 }} />
                 <button onClick={send} disabled={sending} style={{ padding: "12px 22px", background: "#141414", color: "#fff", border: "none", borderRadius: 8, letterSpacing: 1, textTransform: "uppercase", fontSize: 12, cursor: "pointer", flexShrink: 0 }}>{sending ? "..." : "Send"}</button>
               </div>
@@ -301,6 +317,85 @@ function TemplateSender({ phone, from, onSent }: { phone: string; from?: string;
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// Shows who this number is, pulled from the ERE CRM (if matched). Gives the
+// agent instant context — community, tier, transaction history — before replying.
+function CrmContext({ phone }: { phone: string }) {
+  const [c, setC] = useState<any>(undefined); // undefined=loading, null=no match
+  useEffect(() => {
+    setC(undefined);
+    fetch(`/api/crm/contact?phone=${encodeURIComponent(phone)}`)
+      .then((r) => r.json())
+      .then((d) => setC(d.contact || null))
+      .catch(() => setC(null));
+  }, [phone]);
+
+  if (c === undefined) return <div style={ctxBar}><span style={{ color: "#9a958c" }}>Checking CRM…</span></div>;
+  if (c === null) return <div style={ctxBar}><span style={{ color: "#9a958c" }}>Not found in CRM</span></div>;
+
+  const aed = c.total_transaction_value_aed ? `AED ${Number(c.total_transaction_value_aed).toLocaleString()}` : null;
+  const chips = [
+    c.community, c.building, c.unit_type, c.nationality,
+    c.tier ? `Tier ${c.tier}` : null,
+    c.number_of_transactions ? `${c.number_of_transactions} deal${c.number_of_transactions === 1 ? "" : "s"}` : null,
+    aed,
+    c.has_bought_before === true || c.has_bought_before === "Y" ? "Buyer" : null,
+    c.has_sold_before === true || c.has_sold_before === "Y" ? "Seller" : null,
+  ].filter(Boolean);
+
+  return (
+    <div style={ctxBar}>
+      {c.name && <span style={{ fontWeight: 700, color: "#141414" }}>{c.name}</span>}
+      {(c.do_not_call === "Y" || c.do_not_call === true) && <span style={{ color: "#b00020", fontWeight: 600 }}>Do not call</span>}
+      {chips.map((x: string, i: number) => (
+        <span key={i} style={{ background: "#F3F1EC", borderRadius: 12, padding: "2px 9px", color: "#3a3a3a" }}>{x}</span>
+      ))}
+      {chips.length === 0 && !c.name && <span style={{ color: "#9a958c" }}>In CRM (no details)</span>}
+    </div>
+  );
+}
+const ctxBar: React.CSSProperties = { display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", padding: "8px 18px", borderBottom: "1px solid #F0EEE9", background: "#FBFAF7", fontSize: 12 };
+
+// Attach an image or PDF and send it as a media message (within 24h window).
+function AttachMedia({ phone, from, onSent }: { phone: string; from?: string; onSent: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const ref = useRef<HTMLInputElement>(null);
+  async function pick(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", f);
+      fd.append("kind", "chat");
+      const up = await fetch("/api/upload", { method: "POST", body: fd });
+      const ud = await up.json();
+      if (!up.ok) throw new Error(ud.error || "Upload failed");
+      const res = await fetch("/api/send", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: "+" + phone, mediaUrl: ud.url, from: from || undefined }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Send failed");
+      onSent();
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setBusy(false);
+      if (ref.current) ref.current.value = "";
+    }
+  }
+  return (
+    <div style={{ flexShrink: 0 }}>
+      <button onClick={() => ref.current?.click()} disabled={busy} title="Attach image or PDF" style={{ padding: "12px 14px", background: "#fff", border: "1px solid #E4E1DB", borderRadius: 8, cursor: "pointer", lineHeight: 0, color: "#141414" }}>
+        {busy ? <span style={{ fontSize: 13 }}>…</span> : (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" /></svg>
+        )}
+      </button>
+      <input ref={ref} type="file" accept="image/*,application/pdf" onChange={pick} style={{ display: "none" }} />
     </div>
   );
 }

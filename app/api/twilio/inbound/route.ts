@@ -11,20 +11,23 @@ export async function POST(req: NextRequest) {
   const body = String(form.get("Body") || "");
   const sid = String(form.get("MessageSid") || "");
   const profileName = String(form.get("ProfileName") || "").trim(); // WhatsApp display name
+  const numMedia = parseInt(String(form.get("NumMedia") || "0"), 10) || 0;
+  const mediaUrl = numMedia > 0 ? String(form.get("MediaUrl0") || "") : "";
   const phone = from.replace("+", "");
+  const displayBody = body || (mediaUrl ? "[media]" : "");
   const db = supabaseAdmin();
 
   // upsert conversation + log inbound (capture WhatsApp profile name if present)
   const { data: conv } = await db
     .from("conversations")
     .upsert(
-      { wa_phone: phone, last_body: body, last_at: new Date().toISOString(), ...(profileName ? { name: profileName } : {}) },
+      { wa_phone: phone, last_body: displayBody, last_at: new Date().toISOString(), ...(profileName ? { name: profileName } : {}) },
       { onConflict: "wa_phone" }
     )
     .select()
     .single();
   await db.from("messages").insert({
-    conversation: conv!.id, direction: "in", body, status: "received", twilio_sid: sid,
+    conversation: conv!.id, direction: "in", body: displayBody, status: "received", twilio_sid: sid, media_url: mediaUrl || null,
   });
   // mark the conversation unread + last message inbound
   await db.from("conversations").update({ unread: true, last_direction: "in", last_status: "received" }).eq("id", conv!.id);

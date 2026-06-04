@@ -1,0 +1,82 @@
+import { NextResponse } from "next/server";
+import { supabaseAdmin } from "@/lib/supabase";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
+// Per-template performance from our own message log (last 90 days):
+// sent / delivered / read / failed + reply rate (a conversation "replied" if an
+// inbound message arrived after a template send). Keyed by content_sid so the
+// client can merge in template names. GET -> { stats: { [sid]: {...} } }
+export async function GET() {
+  try {
+    const db = supabaseAdmin();
+    const since = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+
+    // Page through outbound template messages.
+    const out: { content_sid: string; conversation: string; status: string | null; created_at: string }[] = [];
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await db
+        .from("messages")
+        .select("content_sid, conversation, status, created_at")
+        .not("content_sid", "is", null)
+        .eq("direction", "out")
+        .gte("created_at", since)
+        .order("created_at", { ascending: true })
+        .range(from, from + 999);
+      if (error) throw error;
+      out.push(...(data as any[]));
+      if (!data || data.length < 1000) break;
+    }
+
+    // Inbound messages grouped by conversation (for reply detection).
+    const inbound: Record<string, number[]> = {};
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await db
+        .from("messages")
+        .select("conversation, created_at")
+        .eq("direction", "in")
+        .gte("created_at", since)
+        .order("created_at", { ascending: true })
+        .range(from, from + 999);
+      if (error) throw error;
+      for (const m of data as any[]) (inbound[m.conversation] ||= []).push(new Date(m.created_at).getTime());
+      if (!data || data.length < 1000) break;
+    }
+
+    const stats: Record<string, any> = {};
+    // Track distinct conversations + replied conversations per template.
+    const convsSeen: Record<string, Set<string>> = {};
+    const convsReplied: Record<string, Set<string>> = {};
+
+    for (const m of out) {
+      const sid = m.content_sid;
+      const s = (stats[sid] ||= { sent: 0, delivered: 0, read: 0, failed: 0 });
+      convsSeen[sid] ||= new Set();
+      convsReplied[sid] ||= new Set();
+      s.sent++;
+      if (m.status === "read") { s.read++; s.delivered++; }
+      else if (m.status === "delivered") s.delivered++;
+      else if (m.status === "failed" || m.status === "undelivered") s.failed++;
+
+      convsSeen[sid].add(m.conversation);
+      const t = new Date(m.created_at).getTime();
+      const replies = inbound[m.conversation];
+      if (replies && replies.some((rt) => rt > t)) convsReplied[sid].add(m.conversation);
+    }
+
+    for (const sid of Object.keys(stats)) {
+      const seen = convsSeen[sid].size;
+      stats[sid].conversations = seen;
+      stats[sid].replied = convsReplied[sid].size;
+      stats[sid].deliveryRate = stats[sid].sent ? Math.round((stats[sid].delivered / stats[sid].sent) * 100) : 0;
+      stats[sid].readRate = stats[sid].sent ? Math.round((stats[sid].read / stats[sid].sent) * 100) : 0;
+      stats[sid].replyRate = seen ? Math.round((stats[sid].replied / seen) * 100) : 0;
+    }
+
+    return NextResponse.json({ stats });
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message || "Failed to compute performance" }, { status: 500 });
+  }
+}

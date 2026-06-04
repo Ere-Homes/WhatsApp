@@ -128,6 +128,14 @@ export async function sendWhatsApp(toE164: string, body: string, from?: string) 
   return postMessage(new URLSearchParams({ To: waTo(toE164), Body: body }), from ? { from } : undefined);
 }
 
+// Free-form media message (image / PDF / etc.) with an optional caption.
+// Also only valid inside the 24h window.
+export async function sendMediaWhatsApp(toE164: string, mediaUrl: string, body?: string, from?: string) {
+  const form = new URLSearchParams({ To: waTo(toE164), MediaUrl: mediaUrl });
+  if (body) form.set("Body", body);
+  return postMessage(form, from ? { from } : undefined);
+}
+
 // Approved template message (works outside the 24h window). Pass sendAt (ISO)
 // to schedule it via Twilio (15 min to 7 days out), and/or a from sender.
 export async function sendTemplate(toE164: string, contentSid: string, variables?: Record<string, string>, sendAt?: string, from?: string) {

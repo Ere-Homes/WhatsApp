@@ -1,17 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
-import { sendWhatsApp, sendTemplate } from "@/lib/twilio";
+import { sendWhatsApp, sendTemplate, sendMediaWhatsApp } from "@/lib/twilio";
 
 // POST free-form: { phone, body }
 // POST template:  { phone, contentSid, variables?, label? }  (works outside 24h window)
+// POST media:     { phone, mediaUrl, body? }  (image/PDF, within 24h window)
 export async function POST(req: NextRequest) {
   try {
-    const { phone, body, contentSid, variables, label, from } = await req.json();
-    if (!phone || (!body && !contentSid)) {
-      return NextResponse.json({ error: "phone and body (or contentSid) required" }, { status: 400 });
+    const { phone, body, contentSid, variables, label, from, mediaUrl } = await req.json();
+    if (!phone || (!body && !contentSid && !mediaUrl)) {
+      return NextResponse.json({ error: "phone and body (or contentSid / mediaUrl) required" }, { status: 400 });
     }
     // What we store/show in the inbox bubble
-    const displayBody = contentSid ? (label || "[template]") : body;
+    const displayBody = contentSid ? (label || "[template]") : (body || (mediaUrl ? "[media]" : ""));
     const e164 = String(phone).replace(/[^0-9+]/g, "");
     const wa = e164.replace("+", "");
     const db = supabaseAdmin();
@@ -29,8 +30,12 @@ export async function POST(req: NextRequest) {
       .select()
       .single();
 
-    // send via Twilio (template or free-form)
-    const tw = contentSid ? await sendTemplate(e164, contentSid, variables, undefined, from) : await sendWhatsApp(e164, body, from);
+    // send via Twilio (template, media, or free-form)
+    const tw = contentSid
+      ? await sendTemplate(e164, contentSid, variables, undefined, from)
+      : mediaUrl
+      ? await sendMediaWhatsApp(e164, mediaUrl, body || undefined, from)
+      : await sendWhatsApp(e164, body, from);
 
     // log outbound message
     await db.from("messages").insert({
@@ -39,6 +44,8 @@ export async function POST(req: NextRequest) {
       body: displayBody,
       status: tw.status,
       twilio_sid: tw.sid,
+      content_sid: contentSid || null,
+      media_url: mediaUrl || null,
     });
 
     // denormalize last-message status onto the conversation (for the inbox list)

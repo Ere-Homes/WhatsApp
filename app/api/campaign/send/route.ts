@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
           .upsert({ wa_phone: wa, last_body: label || "[template]", last_at: new Date().toISOString() }, { onConflict: "wa_phone" })
           .select()
           .single();
-        await db.from("messages").insert({ conversation: conv!.id, direction: "out", body: label || "[template]", status: tw.status, twilio_sid: tw.sid, campaign: campaignId || null });
+        await db.from("messages").insert({ conversation: conv!.id, direction: "out", body: label || "[template]", status: tw.status, twilio_sid: tw.sid, campaign: campaignId || null, content_sid: contentSid || null });
         await db.from("conversations").update({ last_direction: "out", last_status: tw.status }).eq("id", conv!.id);
         results.push({ phone: e164, status: sendAt ? "scheduled" : (tw.status || "queued"), sid: tw.sid });
       } catch (e: any) {

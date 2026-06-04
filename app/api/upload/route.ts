@@ -12,18 +12,28 @@ export async function POST(req: NextRequest) {
   try {
     const form = await req.formData();
     const file = form.get("file") as File | null;
+    const kind = String(form.get("kind") || "card"); // "card" (image only) | "chat" (image + pdf)
     if (!file) return NextResponse.json({ error: "No file provided" }, { status: 400 });
-    if (!file.type.startsWith("image/"))
+
+    const isImage = file.type.startsWith("image/");
+    const isDoc = file.type === "application/pdf";
+    if (kind === "chat") {
+      if (!isImage && !isDoc) return NextResponse.json({ error: "Images or PDF only" }, { status: 400 });
+    } else if (!isImage) {
       return NextResponse.json({ error: "Image files only" }, { status: 400 });
-    if (file.size > 5 * 1024 * 1024)
-      return NextResponse.json({ error: "Image must be under 5 MB" }, { status: 400 });
+    }
+    // WhatsApp limits: ~5 MB images, ~16 MB documents.
+    const max = isImage ? 5 * 1024 * 1024 : 16 * 1024 * 1024;
+    if (file.size > max)
+      return NextResponse.json({ error: `File must be under ${Math.round(max / 1048576)} MB` }, { status: 400 });
 
     const sb = supabaseAdmin();
     // Idempotent: ignore "already exists" on repeat calls.
     await sb.storage.createBucket(BUCKET, { public: true }).catch(() => {});
 
-    const ext = (file.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "");
-    const key = `cards/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const ext = (file.name.split(".").pop() || (isImage ? "jpg" : "pdf")).toLowerCase().replace(/[^a-z0-9]/g, "");
+    const folder = kind === "chat" ? "chat" : "cards";
+    const key = `${folder}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
     const buf = Buffer.from(await file.arrayBuffer());
 
     const { error } = await sb.storage.from(BUCKET).upload(key, buf, {

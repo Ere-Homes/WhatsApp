@@ -8,21 +8,24 @@ export default function Dashboard() {
   const [bill, setBill] = useState<any>(null);
   const [tpls, setTpls] = useState<any[] | null>(null);
   const [convs, setConvs] = useState<any[] | null>(null);
+  const [health, setHealth] = useState<any[] | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     (async () => {
       const sb = supabaseBrowser();
-      const [insR, billR, tplR, convR] = await Promise.allSettled([
+      const [insR, billR, tplR, convR, healthR] = await Promise.allSettled([
         fetch("/api/insights?days=7").then((r) => r.json()),
         fetch("/api/billing?days=30").then((r) => r.json()),
         fetch("/api/templates").then((r) => r.json()),
         sb.from("conversations").select("*").order("last_at", { ascending: false }).limit(100),
+        fetch("/api/health").then((r) => r.json()),
       ]);
       if (insR.status === "fulfilled") setIns(insR.value);
       if (billR.status === "fulfilled") setBill(billR.value);
       if (tplR.status === "fulfilled") setTpls(tplR.value.templates || []);
       if (convR.status === "fulfilled") setConvs((convR.value as any).data || []);
+      if (healthR.status === "fulfilled") setHealth(healthR.value.senders || []);
       setLoading(false);
     })();
   }, []);
@@ -81,11 +84,40 @@ export default function Dashboard() {
               ))}
               {tpls && tpls.length === 0 && <Empty>No templates yet.</Empty>}
             </Panel>
+
+            {/* WhatsApp number health — Meta-set quality + tier */}
+            {health && health.length > 0 && (
+              <div style={{ background: "#fff", border: "1px solid #E4E1DB", borderRadius: 12, padding: 18 }}>
+                <div style={{ fontWeight: 600, marginBottom: 8 }}>Number health</div>
+                {health.map((s) => (
+                  <div key={s.sender} style={{ padding: "10px 0", borderBottom: "1px solid #F0EEE9" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontWeight: 600, fontSize: 14 }}>+{s.sender}</span>
+                      <span style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5, color: qualityColor(s.quality), border: `1px solid ${qualityColor(s.quality)}`, borderRadius: 20, padding: "2px 10px" }}>
+                        {s.quality || "—"}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 12, color: "#6B6862", marginTop: 4 }}>
+                      {s.status && <>{s.status === "ONLINE" ? "Online" : s.status} · </>}Limit: {s.limit || "—"}
+                    </div>
+                  </div>
+                ))}
+                <div style={{ fontSize: 11, color: "#9a958c", marginTop: 8 }}>Set by Meta. Green = healthy; keep volume gradual to climb tiers.</div>
+              </div>
+            )}
           </div>
         </>
       )}
     </div>
   );
+}
+
+function qualityColor(q?: string | null) {
+  const v = (q || "").toUpperCase();
+  if (v === "HIGH" || v === "GREEN") return "#137333";
+  if (v === "MEDIUM" || v === "YELLOW") return "#9a6700";
+  if (v === "LOW" || v === "RED") return "#b00020";
+  return "#9a958c";
 }
 
 function Stat({ label, value, href, color }: { label: string; value: any; href: string; color?: string }) {

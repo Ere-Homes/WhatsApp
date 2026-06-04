@@ -11,7 +11,7 @@ export const maxDuration = 60;
 // POST { recipients:[{phone,vars?}], contentSid, label, sendAt? }
 export async function POST(req: NextRequest) {
   try {
-    const { recipients, contentSid, label, sendAt, from } = await req.json();
+    const { recipients, contentSid, label, sendAt, from, campaignId } = await req.json();
     if (!contentSid) return NextResponse.json({ error: "contentSid required" }, { status: 400 });
     if (!Array.isArray(recipients) || recipients.length === 0)
       return NextResponse.json({ error: "recipients required" }, { status: 400 });
@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
           .upsert({ wa_phone: wa, last_body: label || "[template]", last_at: new Date().toISOString() }, { onConflict: "wa_phone" })
           .select()
           .single();
-        await db.from("messages").insert({ conversation: conv!.id, direction: "out", body: label || "[template]", status: tw.status, twilio_sid: tw.sid });
+        await db.from("messages").insert({ conversation: conv!.id, direction: "out", body: label || "[template]", status: tw.status, twilio_sid: tw.sid, campaign: campaignId || null });
         await db.from("conversations").update({ last_direction: "out", last_status: tw.status }).eq("id", conv!.id);
         results.push({ phone: e164, status: sendAt ? "scheduled" : (tw.status || "queued"), sid: tw.sid });
       } catch (e: any) {

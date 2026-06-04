@@ -13,6 +13,12 @@ const TABS = [
 
 export default function Nav() {
   const path = usePathname();
+  if (path === "/login") return null; // no chrome on the login screen
+
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    window.location.href = "/login";
+  }
   return (
     <nav
       style={{
@@ -53,6 +59,25 @@ export default function Nav() {
           </Link>
         );
       })}
+      <button
+        onClick={logout}
+        title="Sign out"
+        style={{
+          marginLeft: "auto",
+          color: "#cfccc6",
+          background: "transparent",
+          border: "1px solid #3a3a3a",
+          cursor: "pointer",
+          padding: "6px 12px",
+          borderRadius: 6,
+          fontSize: 12,
+          letterSpacing: 1,
+          textTransform: "uppercase",
+          flexShrink: 0,
+        }}
+      >
+        Sign out
+      </button>
     </nav>
   );
 }

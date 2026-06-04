@@ -103,6 +103,24 @@ async function postMessage(form: URLSearchParams, opts?: { sendAt?: string; from
   return data; // includes sid, status
 }
 
+// Cancel a still-scheduled message. Twilio only allows this while the message
+// is in the "scheduled" state (before SendAt); otherwise it 400s.
+export async function cancelMessage(messageSid: string) {
+  const sid = cleanEnv(process.env.TWILIO_ACCOUNT_SID);
+  const token = cleanEnv(process.env.TWILIO_AUTH_TOKEN);
+  const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages/${messageSid}.json`, {
+    method: "POST",
+    headers: {
+      Authorization: "Basic " + Buffer.from(`${sid}:${token}`).toString("base64"),
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({ Status: "canceled" }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.message || `Cancel failed (${res.status})`);
+  return data;
+}
+
 const waTo = (toE164: string) => (toE164.startsWith("whatsapp:") ? toE164 : `whatsapp:${toE164}`);
 
 // Free-form message (only valid inside the 24h customer-service window).

@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { RATES } from "@/lib/rates";
 import { supabaseBrowser } from "@/lib/supabase";
 
@@ -165,15 +166,30 @@ export default function Campaigns() {
     if (!confirm(`This will ${verb} to ${numbers.length} recipient(s) using "${tpl?.name}". Blacklisted contacts are skipped. Continue?`)) return;
 
     const label = renderLabel(tpl, vars);
+    const finishAtIso =
+      mode === "later" ? new Date(sendAt).toISOString()
+      : mode === "drip" ? new Date(Date.now() + dripDurationMin * 60000).toISOString()
+      : null;
+
     setRunning(true);
-    let done = 0, sent = 0, skipped = 0, failed = 0;
+    let done = 0, sent = 0, scheduled = 0, skipped = 0, failed = 0;
+    let campaignId: string | undefined;
     setProgress({ done: 0, total: recipients.length, sent: 0, skipped: 0, failed: 0 });
     try {
+      // Record the campaign first so it appears in the log immediately.
+      const cr = await fetch("/api/campaign/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: tpl?.name, templateSid: tplSid, templateName: tpl?.name, sender, mode, total: recipients.length, finishAt: finishAtIso }),
+      });
+      const cd = await cr.json();
+      if (cr.ok) campaignId = cd.id;
+
       for (const call of calls) {
         const res = await fetch("/api/campaign/send", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ recipients: call.batch, contentSid: tplSid, label, sendAt: call.sendAt, from: sender || undefined }),
+          body: JSON.stringify({ recipients: call.batch, contentSid: tplSid, label, sendAt: call.sendAt, from: sender || undefined, campaignId }),
         });
         const d = await res.json();
         if (!res.ok) throw new Error(d.error || "Batch failed");
@@ -181,15 +197,25 @@ export default function Campaigns() {
           done++;
           if (r.status === "skipped_blacklist") skipped++;
           else if (r.status === "failed" || r.status === "invalid") failed++;
+          else if (r.status === "scheduled") scheduled++;
           else sent++;
         }
-        setProgress({ done, total: recipients.length, sent, skipped, failed });
+        setProgress({ done, total: recipients.length, sent: sent + scheduled, skipped, failed });
       }
-      const tail = mode === "drip" ? ` Will keep sending until ${drip?.finishLabel}.` : "";
-      setDoneMsg(`${mode === "now" ? "Sent" : "Scheduled"} ${sent} · skipped ${skipped} (blacklisted) · failed ${failed}.${tail}`);
+      const tail = mode === "drip" ? ` Drip continues until ${drip?.finishLabel}.` : "";
+      const sch = scheduled ? `, scheduled ${scheduled}` : "";
+      setDoneMsg(`Sent ${sent}${sch} · skipped ${skipped} (blacklisted) · failed ${failed}.${tail} See it in the campaign log.`);
     } catch (e: any) {
       setErr(e.message);
     } finally {
+      // Always record the outcome (even on partial failure) so the log is accurate.
+      if (campaignId) {
+        await fetch("/api/campaign/finalize", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: campaignId, sent, scheduled, failed, skipped }),
+        }).catch(() => {});
+      }
       setRunning(false);
     }
   }
@@ -213,7 +239,10 @@ export default function Campaigns() {
 
   return (
     <div style={{ maxWidth: 760, margin: "0 auto", padding: "28px 20px" }}>
-      <h1 style={{ fontFamily: "Georgia, serif", fontWeight: 400, fontSize: 24, margin: "0 0 6px" }}>Campaigns</h1>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
+        <h1 style={{ fontFamily: "Georgia, serif", fontWeight: 400, fontSize: 24, margin: "0 0 6px" }}>Campaigns</h1>
+        <Link href="/campaigns/history" style={{ fontSize: 13, color: "#6B6862", textDecoration: "none", whiteSpace: "nowrap" }}>Campaign log →</Link>
+      </div>
       <p style={{ color: "#6B6862", fontSize: 14, marginTop: 0, marginBottom: 20 }}>
         Send an approved template to many contacts at once. Blacklisted contacts are skipped automatically.
       </p>
@@ -387,9 +416,11 @@ export default function Campaigns() {
         {running ? "Working…" : mode === "now" ? "Send campaign" : mode === "later" ? "Schedule campaign" : "Start drip campaign"}
       </button>
 
-      <div style={{ marginTop: 22, fontSize: 12, color: "#9a958c" }}>
-        Pulling segments from the ERE CRM database is coming next — share that database’s URL + key to enable it.
-      </div>
+      {doneMsg && (
+        <div style={{ marginTop: 16 }}>
+          <Link href="/campaigns/history" style={{ fontSize: 13, color: "#137333" }}>View campaign log →</Link>
+        </div>
+      )}
     </div>
   );
 }

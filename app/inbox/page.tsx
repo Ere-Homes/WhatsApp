@@ -29,6 +29,7 @@ export default function Inbox() {
   const [sending, setSending] = useState(false);
   const [senders, setSenders] = useState<string[]>([]);
   const [sender, setSender] = useState("");
+  const [query, setQuery] = useState("");
   const isMobile = useIsMobile();
 
   useEffect(() => {
@@ -78,6 +79,11 @@ export default function Inbox() {
     else alert("Send failed: " + (await res.json()).error);
   }
 
+  const q = query.trim().toLowerCase();
+  const shown = q
+    ? convs.filter((c) => (c.name || "").toLowerCase().includes(q) || c.wa_phone.includes(q.replace(/[^0-9]/g, "")))
+    : convs;
+
   const showList = !isMobile || !active;
   const showChat = !isMobile || !!active;
 
@@ -85,7 +91,15 @@ export default function Inbox() {
     <div style={{ display: "flex", height: "100%" }}>
       {showList && (
         <aside style={{ width: isMobile ? "100%" : 320, borderRight: isMobile ? "none" : "1px solid #E4E1DB", background: "#fff", overflowY: "auto", flexShrink: 0 }}>
-          {convs.map((c) => (
+          <div style={{ padding: "10px 12px", borderBottom: "1px solid #F0EEE9", position: "sticky", top: 0, background: "#fff", zIndex: 1 }}>
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search name or number"
+              style={{ width: "100%", padding: "9px 12px", border: "1px solid #E4E1DB", borderRadius: 8, fontSize: 13, boxSizing: "border-box" }}
+            />
+          </div>
+          {shown.map((c) => (
             <div key={c.id} onClick={() => open(c)} style={{ padding: "14px 18px", borderBottom: "1px solid #F0EEE9", cursor: "pointer", background: active?.id === c.id ? "#F3F1EC" : "#fff", display: "flex", gap: 10, alignItems: "center" }}>
               {c.unread && <span style={{ width: 9, height: 9, borderRadius: 9, background: "#137333", flexShrink: 0 }} title="Unread" />}
               <div style={{ flex: 1, minWidth: 0 }}>
@@ -104,6 +118,7 @@ export default function Inbox() {
             </div>
           ))}
           {convs.length === 0 && <div style={{ padding: 20, color: "#6B6862" }}>No conversations yet. Send one below.</div>}
+          {convs.length > 0 && shown.length === 0 && <div style={{ padding: 20, color: "#9a958c", fontSize: 13 }}>No matches for “{query}”.</div>}
         </aside>
       )}
 

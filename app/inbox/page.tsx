@@ -239,7 +239,7 @@ function TemplateSender({ phone, onSent }: { phone: string; onSent: () => void }
 
   return (
     <div style={{ flexShrink: 0 }}>
-      <button onClick={toggle} title="Send a template" style={{ padding: "12px 14px", background: "#fff", border: "1px solid #E4E1DB", borderRadius: 8, cursor: "pointer", fontSize: 16 }}>📋</button>
+      <button onClick={toggle} title="Insert a template" style={{ padding: "12px 16px", background: "#fff", border: "1px solid #E4E1DB", borderRadius: 8, cursor: "pointer", fontSize: 18, lineHeight: 1, color: "#141414" }}>+</button>
       {open && (
         <div style={{ position: "absolute", bottom: 64, left: 14, width: 320, maxHeight: 360, overflowY: "auto", background: "#fff", border: "1px solid #E4E1DB", borderRadius: 12, boxShadow: "0 8px 24px rgba(0,0,0,.12)", padding: 12, zIndex: 20 }}>
           {!sel && (

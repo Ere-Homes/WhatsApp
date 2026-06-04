@@ -60,10 +60,22 @@ function statusCallbackUrl() {
   return `${base}/api/twilio/status${bypass ? `?x-vercel-protection-bypass=${bypass}&x-vercel-set-bypass-cookie=true` : ""}`;
 }
 
-async function postMessage(form: URLSearchParams) {
+// Messaging Service SID — required for Twilio's native scheduled sends.
+const MESSAGING_SERVICE_SID = () => cleanEnv(process.env.TWILIO_MESSAGING_SERVICE_SID);
+
+async function postMessage(form: URLSearchParams, opts?: { sendAt?: string }) {
   const sid = cleanEnv(process.env.TWILIO_ACCOUNT_SID);
   const token = cleanEnv(process.env.TWILIO_AUTH_TOKEN);
-  form.set("From", cleanEnv(process.env.TWILIO_WHATSAPP_FROM));
+
+  // Scheduled sends require a Messaging Service + ScheduleType=fixed; immediate
+  // sends use the From number.
+  if (opts?.sendAt && MESSAGING_SERVICE_SID()) {
+    form.set("MessagingServiceSid", MESSAGING_SERVICE_SID());
+    form.set("ScheduleType", "fixed");
+    form.set("SendAt", opts.sendAt);
+  } else {
+    form.set("From", cleanEnv(process.env.TWILIO_WHATSAPP_FROM));
+  }
   const cb = statusCallbackUrl();
   if (cb) form.set("StatusCallback", cb);
   const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
@@ -86,9 +98,10 @@ export async function sendWhatsApp(toE164: string, body: string) {
   return postMessage(new URLSearchParams({ To: waTo(toE164), Body: body }));
 }
 
-// Approved template message (works outside the 24h window).
-export async function sendTemplate(toE164: string, contentSid: string, variables?: Record<string, string>) {
+// Approved template message (works outside the 24h window). Pass sendAt (ISO)
+// to schedule it via Twilio (15 min to 7 days out).
+export async function sendTemplate(toE164: string, contentSid: string, variables?: Record<string, string>, sendAt?: string) {
   const form = new URLSearchParams({ To: waTo(toE164), ContentSid: contentSid });
   if (variables && Object.keys(variables).length) form.set("ContentVariables", JSON.stringify(variables));
-  return postMessage(form);
+  return postMessage(form, sendAt ? { sendAt } : undefined);
 }

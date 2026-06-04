@@ -63,7 +63,7 @@ export default function Insights() {
         <>
           {t.capped && (
             <div style={{ fontSize: 12, color: "#9a6700", marginBottom: 12 }}>
-              ⚠ Result capped — showing the most recent pages only. Narrow the range for full coverage.
+              Result capped — showing the most recent pages only. Narrow the range for full coverage.
             </div>
           )}
 
@@ -105,7 +105,7 @@ export default function Insights() {
               ))}
             </Section>
             <Section title="Errors (code · cause)">
-              {Object.keys(data!.byErr).length === 0 && <div style={{ color: "#137333" }}>No errors 🎉</div>}
+              {Object.keys(data!.byErr).length === 0 && <div style={{ color: "#137333" }}>No errors.</div>}
               {Object.entries(data!.byErr).sort((a, b) => b[1] - a[1]).map(([code, n]) => (
                 <Row
                   key={code}

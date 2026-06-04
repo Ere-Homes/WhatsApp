@@ -7,6 +7,21 @@ import { supabaseBrowser } from "@/lib/supabase";
 type Tpl = { sid: string; name: string; status: string; body: string | null; variables: Record<string, string> };
 
 const BATCH = 25;
+// CRM fields a template variable can be personalized from.
+const CRM_VAR_FIELDS = [
+  { id: "first_name", label: "First name" },
+  { id: "name", label: "Full name" },
+  { id: "community", label: "Community" },
+  { id: "building", label: "Building" },
+  { id: "unit_number", label: "Unit number" },
+  { id: "nationality", label: "Nationality" },
+  { id: "tier", label: "Tier" },
+];
+function recordValue(rec: any, field: string): string {
+  if (!rec) return "";
+  if (field === "first_name") return String(rec.name || "").trim().split(/\s+/)[0] || "";
+  return rec[field] != null ? String(rec[field]) : "";
+}
 // Warm-up profiles. A brand-new WhatsApp sender shouldn't blast its full tier
 // on day one — Meta ramps you (250 -> 1K -> 10K -> 100K) only while quality
 // stays high. Each profile sets a safe 24h cap and a recommended drip pace.
@@ -20,6 +35,8 @@ export default function Campaigns() {
   const [tpls, setTpls] = useState<Tpl[]>([]);
   const [tplSid, setTplSid] = useState("");
   const [vars, setVars] = useState<Record<string, string>>({});
+  const [varMap, setVarMap] = useState<Record<string, string>>({}); // var -> "fixed" | CRM field id
+  const [crmRecips, setCrmRecips] = useState<any[]>([]); // detailed CRM records for personalization
   const [raw, setRaw] = useState("");
   const [mode, setMode] = useState<"now" | "later" | "drip">("now");
   const [sendAt, setSendAt] = useState(""); // for "later"
@@ -83,8 +100,9 @@ export default function Campaigns() {
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "Failed to load segment");
-      if (!d.phones?.length) { setErr("No contactable numbers matched that segment."); setRaw(""); }
-      else setRaw(d.phones.join("\n"));
+      const recs = d.recipients || [];
+      if (!recs.length) { setErr("No contactable numbers matched that segment."); setRaw(""); setCrmRecips([]); }
+      else { setCrmRecips(recs); setRaw(recs.map((r: any) => r.phone).join("\n")); }
     } catch (e: any) {
       setErr(e.message);
     } finally {
@@ -160,7 +178,20 @@ export default function Campaigns() {
       return setErr(`At ${perBatch} every ${humanInterval(intervalMin)}, this would take longer than Twilio's 7-day limit. Use a bigger batch, a shorter interval, or fewer recipients.`);
     }
 
-    const recipients = numbers.map((p) => ({ phone: p, vars: Object.keys(vars).length ? vars : undefined }));
+    // Build per-recipient variables: fixed text, or pulled from each contact's
+    // CRM record (falling back to the fixed text when a field is empty).
+    const recMap = new Map(crmRecips.map((r) => [String(r.phone).replace(/[^0-9]/g, ""), r]));
+    const hasMapping = tplVars.length > 0;
+    const recipients = numbers.map((p) => {
+      if (!hasMapping) return { phone: p, vars: undefined };
+      const rec = recMap.get(p.replace(/[^0-9]/g, ""));
+      const v: Record<string, string> = {};
+      for (const k of tplVars) {
+        const src = varMap[k] || "fixed";
+        v[k] = src === "fixed" ? (vars[k] || "") : (recordValue(rec, src) || vars[k] || "");
+      }
+      return { phone: p, vars: v };
+    });
     const calls = buildPlan(recipients); // [{ batch, sendAt? }]
     const verb = mode === "now" ? "send now" : mode === "later" ? `schedule for ${new Date(sendAt).toLocaleString()}` : `drip ${perBatch} every ${humanInterval(intervalMin)} (finishes ${drip?.finishLabel})`;
     if (!confirm(`This will ${verb} to ${numbers.length} recipient(s) using "${tpl?.name}". Blacklisted contacts are skipped. Continue?`)) return;
@@ -248,17 +279,32 @@ export default function Campaigns() {
       </p>
 
       <Section title="1 · Template">
-        <select value={tplSid} onChange={(e) => { setTplSid(e.target.value); setVars({}); }} style={input}>
+        <select value={tplSid} onChange={(e) => { setTplSid(e.target.value); setVars({}); setVarMap({}); }} style={input}>
           <option value="">Select an approved template…</option>
           {tpls.map((t) => <option key={t.sid} value={t.sid}>{t.name}</option>)}
         </select>
         {tpl?.body && <div style={{ marginTop: 10, padding: 12, background: "#F7F5F0", borderRadius: 8, fontSize: 14, whiteSpace: "pre-wrap" }}>{renderLabel(tpl, vars)}</div>}
-        {tplVars.map((k) => (
-          <div key={k} style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
-            <span style={{ fontSize: 13, fontWeight: 600 }}>{`{{${k}}}`}</span>
-            <input value={vars[k] || ""} onChange={(e) => setVars({ ...vars, [k]: e.target.value })} placeholder="value used for all recipients" style={{ ...input, marginBottom: 0 }} />
+        {tplVars.length > 0 && (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: 13, color: "#6B6862", marginBottom: 4 }}>Fill each variable with fixed text or a CRM field (personalized per recipient).</div>
+            {tplVars.map((k) => {
+              const src = varMap[k] || "fixed";
+              return (
+                <div key={k} style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, width: 42, flexShrink: 0 }}>{`{{${k}}}`}</span>
+                  <select value={src} onChange={(e) => setVarMap({ ...varMap, [k]: e.target.value })} style={{ ...input, width: 160, marginBottom: 0 }}>
+                    <option value="fixed">Fixed text</option>
+                    {CRM_VAR_FIELDS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
+                  </select>
+                  <input value={vars[k] || ""} onChange={(e) => setVars({ ...vars, [k]: e.target.value })} placeholder={src === "fixed" ? "value for all recipients" : "fallback if missing"} style={{ ...input, flex: 1, minWidth: 150, marginBottom: 0 }} />
+                </div>
+              );
+            })}
+            {Object.values(varMap).some((v) => v !== "fixed") && source !== "crm" && (
+              <div style={{ fontSize: 12, color: "#9a6700", marginTop: 6 }}>CRM fields only fill for recipients loaded from a CRM segment — pasted numbers will use the fallback text.</div>
+            )}
           </div>
-        ))}
+        )}
       </Section>
 
       <Section title="2 · Recipients">

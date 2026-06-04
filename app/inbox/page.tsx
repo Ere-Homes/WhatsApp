@@ -7,7 +7,20 @@ type Conv = {
   id: string; wa_phone: string; name: string | null; status: string;
   last_body: string | null; last_at: string | null;
   unread?: boolean | null; last_direction?: string | null; last_status?: string | null;
+  lead_status?: string | null;
 };
+
+// Lead temperature options + colors.
+const LEAD_STATUSES = [
+  { id: "new", label: "New", color: "#6B6862" },
+  { id: "hot", label: "Hot", color: "#b00020" },
+  { id: "warm", label: "Warm", color: "#d9822b" },
+  { id: "cold", label: "Cold", color: "#1a73e8" },
+  { id: "won", label: "Won", color: "#137333" },
+  { id: "lost", label: "Lost", color: "#9a958c" },
+];
+const leadColor = (s?: string | null) => LEAD_STATUSES.find((x) => x.id === (s || "new"))?.color || "#6B6862";
+const leadLabel = (s?: string | null) => LEAD_STATUSES.find((x) => x.id === (s || "new"))?.label || "New";
 type Msg = { id: string; conversation: string; direction: string; body: string | null; status: string | null; created_at: string; media_url?: string | null };
 
 // Resolve a media URL to something the browser can load. Inbound Twilio URLs
@@ -39,7 +52,14 @@ export default function Inbox() {
   const [senders, setSenders] = useState<string[]>([]);
   const [sender, setSender] = useState("");
   const [query, setQuery] = useState("");
+  const [leadFilter, setLeadFilter] = useState("all");
   const isMobile = useIsMobile();
+
+  async function setLead(id: string, lead_status: string) {
+    await sb.current.from("conversations").update({ lead_status }).eq("id", id);
+    setConvs((prev) => prev.map((x) => (x.id === id ? { ...x, lead_status } : x)));
+    setActive((a) => (a && a.id === id ? { ...a, lead_status } : a));
+  }
 
   useEffect(() => {
     fetch("/api/senders").then((r) => r.json()).then((d) => {
@@ -89,9 +109,11 @@ export default function Inbox() {
   }
 
   const q = query.trim().toLowerCase();
-  const shown = q
-    ? convs.filter((c) => (c.name || "").toLowerCase().includes(q) || c.wa_phone.includes(q.replace(/[^0-9]/g, "")))
-    : convs;
+  const shown = convs.filter((c) => {
+    if (leadFilter !== "all" && (c.lead_status || "new") !== leadFilter) return false;
+    if (!q) return true;
+    return (c.name || "").toLowerCase().includes(q) || c.wa_phone.includes(q.replace(/[^0-9]/g, ""));
+  });
 
   const showList = !isMobile || !active;
   const showChat = !isMobile || !!active;
@@ -107,6 +129,22 @@ export default function Inbox() {
               placeholder="Search name or number"
               style={{ width: "100%", padding: "9px 12px", border: "1px solid #E4E1DB", borderRadius: 8, fontSize: 13, boxSizing: "border-box" }}
             />
+            <div style={{ display: "flex", gap: 5, marginTop: 8, flexWrap: "wrap" }}>
+              {[{ id: "all", label: "All", color: "#141414" }, ...LEAD_STATUSES].map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => setLeadFilter(s.id)}
+                  style={{
+                    fontSize: 11, padding: "3px 9px", borderRadius: 20, cursor: "pointer",
+                    border: `1px solid ${leadFilter === s.id ? s.color : "#E4E1DB"}`,
+                    background: leadFilter === s.id ? s.color : "#fff",
+                    color: leadFilter === s.id ? "#fff" : "#6B6862",
+                  }}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
           </div>
           {shown.map((c) => (
             <div key={c.id} onClick={() => open(c)} style={{ padding: "14px 18px", borderBottom: "1px solid #F0EEE9", cursor: "pointer", background: active?.id === c.id ? "#F3F1EC" : "#fff", display: "flex", gap: 10, alignItems: "center" }}>
@@ -115,6 +153,9 @@ export default function Inbox() {
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
                   <span style={{ fontWeight: c.unread ? 700 : 600 }}>
                     {c.name || "+" + c.wa_phone}
+                    {c.lead_status && c.lead_status !== "new" && (
+                      <span style={{ fontSize: 10, marginLeft: 8, color: "#fff", background: leadColor(c.lead_status), padding: "1px 7px", borderRadius: 10, textTransform: "uppercase", letterSpacing: 0.5 }}>{leadLabel(c.lead_status)}</span>
+                    )}
                     {c.status === "blocked" && <span style={{ color: "#b00", fontSize: 11, marginLeft: 8 }}>blocked</span>}
                   </span>
                   {c.last_at && <span style={{ fontSize: 11, color: "#9a958c", whiteSpace: "nowrap" }}>{new Date(c.last_at).toLocaleDateString([], { month: "short", day: "numeric" })}</span>}
@@ -138,6 +179,14 @@ export default function Inbox() {
               <div style={{ padding: "14px 18px", borderBottom: "1px solid #E4E1DB", background: "#fff", fontWeight: 600, display: "flex", alignItems: "center", gap: 12 }}>
                 {isMobile && <button onClick={() => setActive(null)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", padding: 0 }}>←</button>}
                 <span style={{ flex: 1 }}>{active.name || "+" + active.wa_phone}</span>
+                <select
+                  value={active.lead_status || "new"}
+                  onChange={(e) => setLead(active.id, e.target.value)}
+                  title="Lead status"
+                  style={{ padding: "7px 10px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", color: "#fff", background: leadColor(active.lead_status), border: "none" }}
+                >
+                  {LEAD_STATUSES.map((s) => <option key={s.id} value={s.id} style={{ background: "#fff", color: "#141414" }}>{s.label}</option>)}
+                </select>
                 <PushToPipedrive conv={active} lastInbound={[...msgs].reverse().find((m) => m.direction === "in")?.body || null} />
               </div>
               <CrmContext phone={active.wa_phone} />

@@ -36,13 +36,35 @@ function contactableParts(filters: Record<string, string>) {
   return parts;
 }
 
-// Contactable phone numbers matching the chosen filters.
+// Normalize a messy CRM phone to E.164 (UAE-centric). CRM stores things like
+// ".0502077152" / "0502077152" / "971..." — campaigns need a real + number.
+function toE164(raw: string): string {
+  let d = (raw || "").replace(/[^0-9]/g, "");
+  if (!d) return "";
+  if (d.startsWith("971")) return `+${d}`;
+  if (d.startsWith("00")) return `+${d.slice(2)}`;
+  if (d.startsWith("0")) d = d.slice(1);
+  if (d.length === 9 && d.startsWith("5")) return `+971${d}`; // UAE mobile
+  return `+${d}`;
+}
+
+const CRM_RECIP_COLS = "phone,name,community,building,unit_number,nationality,tier";
+
+// Contactable recipients matching the chosen filters, with the fields used to
+// personalize template variables. Phones normalized + deduped.
 export async function crmContacts(filters: Record<string, string>, limit: number) {
-  const parts = ["select=phone", ...contactableParts(filters)];
+  const parts = [`select=${CRM_RECIP_COLS}`, ...contactableParts(filters)];
   parts.push(`limit=${Math.min(Math.max(limit || 500, 1), 5000)}`);
   const rows = await crmGet(`contacts?${parts.join("&")}`);
-  const phones = Array.from(new Set((rows || []).map((r: any) => r.phone).filter(Boolean)));
-  return phones;
+  const seen = new Set<string>();
+  const out: any[] = [];
+  for (const r of rows || []) {
+    const phone = toE164(r.phone);
+    if (!phone || seen.has(phone)) continue;
+    seen.add(phone);
+    out.push({ phone, name: r.name || "", community: r.community || "", building: r.building || "", unit_number: r.unit_number || "", nationality: r.nationality || "", tier: r.tier || "" });
+  }
+  return out;
 }
 
 // Look up a single CRM contact by a WhatsApp number (E.164 digits, no +).

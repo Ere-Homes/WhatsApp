@@ -10,6 +10,7 @@ create table if not exists conversations (
   unread         boolean not null default false, -- inbound arrived, not yet opened
   last_direction text,                           -- in | out (of last message)
   last_status    text,                           -- last outbound delivery status
+  lead_status    text not null default 'new',    -- new | hot | warm | cold | won | lost
   created_at     timestamptz not null default now()
 );
 

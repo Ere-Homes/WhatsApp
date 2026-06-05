@@ -70,16 +70,19 @@ export async function crmContacts(filters: Record<string, string>, limit: number
 // Look up a single CRM contact by a WhatsApp number (E.164 digits, no +).
 // CRM phones are stored inconsistently (e.g. ".0502077152", local "05..."),
 // so we try several format variants against an indexed equality/in lookup.
-const CRM_CONTACT_COLS = "name,community,building,tier,nationality,unit_type,total_transaction_value_aed,number_of_transactions,has_bought_before,has_sold_before,last_transaction_date,do_not_call";
+const CRM_CONTACT_COLS = "name,community,building,tier,nationality,unit_type,total_transaction_value_aed,number_of_transactions,has_bought_before,has_sold_before,last_transaction_date,do_not_call,verified_source,source_batch,source_path";
 
 function phoneVariants(wa: string): string[] {
   const digits = (wa || "").replace(/[^0-9]/g, "");
   if (!digits) return [];
-  const set = new Set<string>([`+${digits}`, digits]);
-  // UAE: strip 971 country code -> national number, add leading 0 + dotted forms
+  // Cover the formats the CRM is known to store: E.164 (+9715..), bare digits,
+  // 00-prefixed intl, national (5..), 0-prefixed national (05..), and the
+  // observed leading-dot variants of each.
+  const set = new Set<string>([`+${digits}`, digits, `00${digits}`]);
   let national = digits;
   if (digits.startsWith("971")) national = digits.slice(3);
-  for (const n of [national, `0${national}`]) {
+  else if (digits.startsWith("00971")) national = digits.slice(5);
+  for (const n of [national, `0${national}`, `971${national}`]) {
     set.add(n);
     set.add(`.${n}`); // observed leading-dot format
   }

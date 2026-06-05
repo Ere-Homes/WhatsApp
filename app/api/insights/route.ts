@@ -21,14 +21,17 @@ export async function GET(req: NextRequest) {
     const fromDate = new Date(isNaN(fromMs) ? Date.now() - 86400000 : fromMs);
     const toDate = new Date(isNaN(toMs) ? Date.now() : toMs);
 
-    // Twilio's DateSent filter is date-granular; widen the lower bound by a day
-    // so a partial-day "from" still pulls everything, then filter precisely below.
+    // Filter by DateCreated, not DateSent: Twilio only stamps DateSent once a
+    // message leaves the queue, so queued/sending/accepted messages have none and
+    // a DateSent filter silently drops them (50 sent can read as 25 mid-flight).
+    // DateCreated is set the instant Twilio accepts the message, so all count.
+    // It's date-granular; widen the lower bound by a day, then filter precisely below.
     const sinceStr = new Date(fromDate.getTime() - 86400000).toISOString().slice(0, 10);
     const untilStr = toDate.toISOString().slice(0, 10);
 
     let url: string | null =
       `https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json` +
-      `?PageSize=200&DateSent%3E=${sinceStr}&DateSent%3C=${untilStr}`;
+      `?PageSize=200&DateCreated%3E=${sinceStr}&DateCreated%3C=${untilStr}`;
 
     const raw: any[] = [];
     let pages = 0;
@@ -40,7 +43,7 @@ export async function GET(req: NextRequest) {
 
     // Precise timestamp filter to the exact [from, to] window.
     const messages = raw.filter((m) => {
-      const ts = Date.parse(m.date_sent || m.date_created || "");
+      const ts = Date.parse(m.date_created || m.date_sent || "");
       return !isNaN(ts) && ts >= fromDate.getTime() && ts <= toDate.getTime();
     });
 
@@ -80,8 +83,8 @@ export async function GET(req: NextRequest) {
         if (m.price_unit) currency = m.price_unit;
       }
 
-      const d = (m.date_sent || m.date_created || "").slice(0, 16); // "Wed, 03 Jun 2026"
-      const dayKey = m.date_sent ? new Date(m.date_sent).toISOString().slice(0, 10) : d;
+      const d = (m.date_created || m.date_sent || "").slice(0, 16); // "Wed, 03 Jun 2026"
+      const dayKey = m.date_created ? new Date(m.date_created).toISOString().slice(0, 10) : d;
       if (!byDay[dayKey]) byDay[dayKey] = { out: 0, in: 0 };
       if (isOut) byDay[dayKey].out++;
       else byDay[dayKey].in++;

@@ -1,119 +1,87 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Icon, IC, PageHead, downloadCSV, downloadText } from "@/lib/ui";
-import { USAGE, INVOICES } from "@/lib/fixtures";
+import { Icon, IC, PageHead, downloadCSV } from "@/lib/ui";
 
 const TWILIO_BILLING = "https://console.twilio.com/us1/billing/manage-billing/billing-overview";
 
-export default function Billing() {
-  const monthTotalFixture = USAGE.reduce((a, u) => a + u.count * u.rate, 0);
-  const [balance, setBalance] = useState("$642.18");
-  const [monthTotal, setMonthTotal] = useState(monthTotalFixture);
+type Billing = {
+  balance: { balance: string; currency: string } | null;
+  range: { days: number; since: string };
+  spend: { total: number; allTime: number; avgPerDay: number; currency: string };
+  byDay: { day: string; spend: number }[];
+};
 
-  // Live Twilio balance + spend when configured; otherwise the seeded numbers.
+const dash = "—";
+
+export default function Billing() {
+  const [d, setD] = useState<Billing | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
   useEffect(() => {
     fetch("/api/billing?days=30")
       .then((r) => r.json())
-      .then((d) => {
-        if (d?.balance) setBalance(`${d.balance.currency === "USD" ? "$" : d.balance.currency + " "}${parseFloat(d.balance.balance).toFixed(2)}`);
-        if (d?.spend && typeof d.spend.total === "number" && d.spend.total > 0) setMonthTotal(d.spend.total);
-      })
-      .catch(() => {});
+      .then((j) => { if (j?.error) setErr(j.error); else setD(j); })
+      .catch(() => setErr("Could not reach Twilio billing."));
   }, []);
 
-  const convCount = USAGE.reduce((a, u) => a + u.count, 0);
+  const cur = (n: number, c = d?.spend.currency || "USD") => (c === "USD" ? "$" : c + " ") + n.toFixed(2);
+  const balanceStr = d?.balance ? cur(parseFloat(d.balance.balance), d.balance.currency) : dash;
+  const byDay = (d?.byDay || []).filter((x) => x.spend > 0).slice().reverse();
 
   const exportStatement = () => {
-    const rows: (string | number)[][] = [["Category", "Count", "Rate (USD)", "Cost (USD)"]];
-    USAGE.forEach((u) => rows.push([u.cat, u.count, u.rate.toFixed(4), (u.count * u.rate).toFixed(2)]));
-    rows.push(["Total", "", "", monthTotalFixture.toFixed(2)]);
-    rows.push([]);
-    rows.push(["Invoice", "Date", "Amount (USD)", "Status"]);
-    INVOICES.forEach((i) => rows.push([i.id, i.date, i.amount.toFixed(2), "Paid"]));
-    downloadCSV("ere-billing-statement.csv", rows);
-  };
-
-  const downloadInvoice = (inv: typeof INVOICES[number]) => {
-    const lines = [
-      "ERE Homes — WhatsApp messaging invoice",
-      "",
-      `Invoice:  ${inv.id}`,
-      `Date:     ${inv.date}`,
-      `Status:   Paid`,
-      `Amount:   $${inv.amount.toFixed(2)} USD`,
-      "",
-      "Billed to: ERE Homes Real Estate Brokers, Dubai, UAE",
-      "Payment:   Visa •••• 4417",
-      "",
-      "Charges for WhatsApp Business conversations (marketing, utility,",
-      "service and authentication) via Twilio for the billing period.",
-    ];
-    downloadText(`${inv.id}.txt`, lines.join("\n"));
+    if (!d) return;
+    const rows: (string | number)[][] = [["Date", `Spend (${d.spend.currency})`]];
+    d.byDay.forEach((x) => rows.push([x.day, x.spend.toFixed(4)]));
+    rows.push(["Total (30d)", d.spend.total.toFixed(2)]);
+    rows.push(["All-time", d.spend.allTime.toFixed(2)]);
+    downloadCSV("ere-billing-spend.csv", rows);
   };
 
   return (
     <div className="page"><div className="maxw">
-      <PageHead title="Billing & usage" sub="WhatsApp conversation charges, payment method and invoices for this Twilio project.">
-        <button className="btn btn-sec" onClick={exportStatement}><Icon d={IC.dl} s={15} />Download statement</button>
+      <PageHead title="Billing & usage" sub="Live Twilio account balance and actual billed WhatsApp spend. Invoices and payment method are managed in Twilio.">
+        <button className="btn btn-sec" onClick={exportStatement} disabled={!d}><Icon d={IC.dl} s={15} />Export spend</button>
         <a className="btn btn-primary" href={TWILIO_BILLING} target="_blank" rel="noreferrer"><Icon d={IC.plus} s={16} />Add funds</a>
       </PageHead>
 
+      {err && <div className="err-box" style={{ marginBottom: 14 }}>{err}</div>}
+
       <div className="kpis k4">
-        <div className="kpi"><div className="kl">Account balance</div><div className="kv">{balance}</div><div className="ks">auto-recharge on</div></div>
-        <div className="kpi"><div className="kl">This month</div><div className="kv">${monthTotal.toFixed(2)}</div><div className="ks">1–5 Jun 2026</div></div>
-        <div className="kpi"><div className="kl">Conversations</div><div className="kv">{convCount.toLocaleString()}</div><div className="ks">billable this period</div></div>
-        <div className="kpi"><div className="kl">Next invoice</div><div className="kv">01 Jul</div></div>
+        <div className="kpi"><div className="kl">Account balance</div><div className="kv">{balanceStr}</div><div className="ks">{d?.balance ? "live Twilio balance" : "prepaid balance unavailable"}</div></div>
+        <div className="kpi"><div className="kl">Last 30 days</div><div className="kv">{d ? cur(d.spend.total) : dash}</div><div className="ks">actual billed spend</div></div>
+        <div className="kpi"><div className="kl">All-time spend</div><div className="kv">{d ? cur(d.spend.allTime) : dash}</div></div>
+        <div className="kpi"><div className="kl">Avg / day</div><div className="kv">{d ? cur(d.spend.avgPerDay) : dash}</div><div className="ks">over last 30 days</div></div>
       </div>
 
       <div className="grid-2">
         <div className="card">
-          <div className="card-head"><div className="card-t">Usage this period</div><div className="card-meta">By conversation category</div></div>
+          <div className="card-head"><div className="card-t">Daily spend</div><div className="card-meta">last 30 days · billed by Twilio</div></div>
           <table className="ttable flush">
-            <thead><tr><th>Category</th><th>Count</th><th>Rate</th><th style={{ textAlign: "right" }}>Cost</th></tr></thead>
+            <thead><tr><th>Date</th><th style={{ textAlign: "right" }}>Spend</th></tr></thead>
             <tbody>
-              {USAGE.map((u) => (
-                <tr key={u.cat} className="norow">
-                  <td>{u.cat}</td>
-                  <td className="tcol-muted">{u.count.toLocaleString()}</td>
-                  <td className="tcol-muted mono">${u.rate.toFixed(4)}</td>
-                  <td style={{ textAlign: "right" }} className="mono">${(u.count * u.rate).toFixed(2)}</td>
+              {!d && <tr className="norow"><td colSpan={2} className="tcol-muted">Loading…</td></tr>}
+              {d && byDay.length === 0 && <tr className="norow"><td colSpan={2} className="tcol-muted">No billed usage in the last 30 days.</td></tr>}
+              {byDay.map((x) => (
+                <tr key={x.day} className="norow">
+                  <td className="tcol-muted">{new Date(x.day).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })}</td>
+                  <td style={{ textAlign: "right" }} className="mono">{cur(x.spend)}</td>
                 </tr>
               ))}
-              <tr className="totalrow"><td colSpan={3}>Total</td><td style={{ textAlign: "right" }} className="mono">${monthTotalFixture.toFixed(2)}</td></tr>
+              {d && byDay.length > 0 && (
+                <tr className="totalrow"><td>Total</td><td style={{ textAlign: "right" }} className="mono">{cur(d.spend.total)}</td></tr>
+              )}
             </tbody>
           </table>
         </div>
 
         <div className="card">
-          <div className="card-head"><div className="card-t">Payment method</div></div>
-          <div className="paycard">
-            <div className="pc-row"><span className="pc-brand"><Icon d={IC.card} s={18} /> Visa</span><span className="mono">•••• 4417</span></div>
-            <div className="pc-meta">Expires 09 / 28 · Karim Rahimi</div>
-          </div>
-          <div className="recharge">
-            <div className="rc-row"><span>Auto-recharge</span><span className="pill-on">On</span></div>
-            <div className="rc-meta">When balance falls below $100, add $500 automatically.</div>
-            <a className="btn btn-sec btn-sm" style={{ marginTop: 12 }} href={TWILIO_BILLING} target="_blank" rel="noreferrer">Edit settings</a>
-          </div>
+          <div className="card-head"><div className="card-t">Invoices & payment</div></div>
+          <p style={{ fontSize: 13.5, color: "var(--ink-2)", lineHeight: 1.55, margin: "4px 0 14px" }}>
+            Invoices, payment method and auto-recharge are managed in the Twilio console for this project — we don’t store card details or generate invoices here.
+          </p>
+          <a className="btn btn-sec" href={TWILIO_BILLING} target="_blank" rel="noreferrer">Open Twilio billing <Icon d={IC.ext} s={14} /></a>
+          <a className="btn btn-ghost" style={{ marginLeft: 8 }} href="https://www.twilio.com/en-us/whatsapp/pricing" target="_blank" rel="noreferrer">WhatsApp rates <Icon d={IC.ext} s={14} /></a>
         </div>
-      </div>
-
-      <div className="card">
-        <div className="card-head"><div className="card-t">Invoices</div></div>
-        <table className="ttable flush">
-          <thead><tr><th>Invoice</th><th>Date</th><th>Amount</th><th>Status</th><th style={{ textAlign: "right" }}></th></tr></thead>
-          <tbody>
-            {INVOICES.map((inv) => (
-              <tr key={inv.id} className="norow">
-                <td className="mono">{inv.id}</td>
-                <td className="tcol-muted">{inv.date}</td>
-                <td className="mono">${inv.amount.toFixed(2)}</td>
-                <td><span className="badge" style={{ color: "#fff", background: "var(--green-dot)", borderColor: "var(--green-dot)" }}><span className="bd" style={{ background: "rgba(255,255,255,.9)" }} />Paid</span></td>
-                <td style={{ textAlign: "right" }}><a className="card-link" href="#" onClick={(e) => { e.preventDefault(); downloadInvoice(inv); }}>PDF</a></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
       </div>
     </div></div>
   );

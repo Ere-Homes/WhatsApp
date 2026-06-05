@@ -18,12 +18,20 @@ export async function GET() {
         const approval = c.approval_requests || {};
         const types = c.types || {};
         const typeKey = Object.keys(types)[0] || null;
-        const actions = (typeKey ? types[typeKey]?.actions : null) || [];
+        const t = (typeKey ? types[typeKey] : null) || {};
+        const actions = t.actions || [];
         // Quick-reply button titles - these become the tappable keyword triggers
         const replyButtons = actions
           .filter((a: any) => (a?.type || "").toUpperCase() === "QUICK_REPLY")
           .map((a: any) => a.title)
           .filter(Boolean);
+        // Header image (real URL only - skip variable placeholders like "{{1}}")
+        const rawMedia = Array.isArray(t.media) ? t.media[0] : t.media;
+        const media = typeof rawMedia === "string" && /^https?:\/\//i.test(rawMedia) ? rawMedia : null;
+        // Full button list (type/title/url/phone) so the preview can render them
+        const buttons = actions
+          .map((a: any) => ({ type: (a?.type || "").toUpperCase(), title: a?.title || "", url: a?.url || null, phone: a?.phone || null }))
+          .filter((b: any) => b.title);
         out.push({
           sid: c.sid,
           name: c.friendly_name,
@@ -33,7 +41,11 @@ export async function GET() {
           status: approval.status || "unsubmitted", // approved | pending | rejected | ...
           rejection_reason: approval.rejection_reason || null,
           variables: c.variables || {},
-          body: types[typeKey || ""]?.body || null,
+          body: t.body || null,
+          media,
+          headerText: t.header_text || null,
+          footer: t.footer || null,
+          buttons,
           replyButtons,
           updated: c.date_updated,
         });

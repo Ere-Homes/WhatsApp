@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
-import { sendWhatsApp, sendTemplate, sendMediaWhatsApp } from "@/lib/twilio";
+import { sendWhatsApp, sendTemplate, sendMediaWhatsApp, getContentMedia } from "@/lib/twilio";
 import { logConversationToPipedrive } from "@/lib/pipedriveSync";
 
 // POST free-form: { phone, body }
@@ -31,6 +31,10 @@ export async function POST(req: NextRequest) {
       .select()
       .single();
 
+    // For template sends, pull the template's header image so the inbox bubble
+    // shows the same creative the recipient sees (text templates resolve to null).
+    const templateMedia = contentSid ? await getContentMedia(contentSid) : null;
+
     // send via Twilio (template, media, or free-form)
     const tw = contentSid
       ? await sendTemplate(e164, contentSid, variables, undefined, from)
@@ -46,7 +50,7 @@ export async function POST(req: NextRequest) {
       status: tw.status,
       twilio_sid: tw.sid,
       content_sid: contentSid || null,
-      media_url: mediaUrl || null,
+      media_url: mediaUrl || templateMedia || null,
     });
 
     // denormalize last-message status onto the conversation (for the inbox list)

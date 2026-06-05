@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
-import { sendTemplate } from "@/lib/twilio";
+import { sendTemplate, getContentMedia } from "@/lib/twilio";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,6 +19,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Max 25 recipients per batch" }, { status: 400 });
 
     const db = supabaseAdmin();
+
+    // Resolve the template's header image once (constant for the whole batch) so
+    // every logged message shows the creative in our inbox, not just text.
+    const templateMedia = await getContentMedia(contentSid);
 
     // Skip opted-out (blocked) AND known-invalid (dead WhatsApp) numbers.
     const phones = recipients.map((r: any) => String(r.phone).replace(/[^0-9+]/g, "").replace("+", ""));
@@ -42,7 +46,7 @@ export async function POST(req: NextRequest) {
           .upsert({ wa_phone: wa, last_body: label || "[template]", last_at: new Date().toISOString() }, { onConflict: "wa_phone" })
           .select()
           .single();
-        await db.from("messages").insert({ conversation: conv!.id, direction: "out", body: label || "[template]", status: tw.status, twilio_sid: tw.sid, campaign: campaignId || null, content_sid: contentSid || null });
+        await db.from("messages").insert({ conversation: conv!.id, direction: "out", body: label || "[template]", status: tw.status, twilio_sid: tw.sid, campaign: campaignId || null, content_sid: contentSid || null, media_url: templateMedia });
         await db.from("conversations").update({ last_direction: "out", last_status: tw.status }).eq("id", conv!.id);
         results.push({ phone: e164, status: sendAt ? "scheduled" : (tw.status || "queued"), sid: tw.sid });
       } catch (e: any) {

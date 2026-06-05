@@ -24,6 +24,25 @@ export async function twilioGet(url: string) {
   return data;
 }
 
+// Resolve a template's header media URL (image / PDF / video) from its Content
+// SID, so outbound template messages render the creative in our own inbox just
+// like the recipient sees on WhatsApp. Returns null for text-only templates and
+// for variable media placeholders ("{{1}}") that aren't real URLs.
+export async function getContentMedia(contentSid: string): Promise<string | null> {
+  try {
+    const data: any = await twilioGet(`https://content.twilio.com/v1/Content/${contentSid}`);
+    const types = data?.types || {};
+    for (const key of Object.keys(types)) {
+      const m = types[key]?.media;
+      const url = Array.isArray(m) ? m[0] : m;
+      if (typeof url === "string" && /^https?:\/\//i.test(url)) return url;
+    }
+    return null;
+  } catch {
+    return null; // never block a send on media lookup
+  }
+}
+
 // JSON POST against content.twilio.com (Content API).
 export async function twilioContentPost(path: string, body: any) {
   const { authHeader } = twilioCreds();

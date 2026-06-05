@@ -208,7 +208,11 @@ export default function Inbox() {
                 <div className="ci-main">
                   <div className="ci-top"><span className="ci-name">{c.name}</span><span className="ci-time">{c.time}</span></div>
                   <div className="ci-bottom">
-                    <span className="ci-msg">{c.messages.length ? c.messages[c.messages.length - 1].t : c.live ? "Tap to open" : ""}</span>
+                    <span className="ci-msg">{(() => {
+                      if (!c.messages.length) return c.live ? "Tap to open" : "";
+                      const last = c.messages[c.messages.length - 1];
+                      return last.t || (last.media ? "📷 Photo" : "");
+                    })()}</span>
                     {c.unread > 0 && <span className="unread">{c.unread}</span>}
                   </div>
                   {(c.tag || c.community) && <div className="ci-tags"><TagDot tag={c.tag} /><span className="ci-comm">{c.community}</span></div>}

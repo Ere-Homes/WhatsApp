@@ -30,7 +30,7 @@ function PhonePreview({ kind, headerType, headerText, mediaUrl, body, footer, bu
   );
 }
 
-type Seed = { kind: "text" | "card" | "quick-reply"; name: string; category: string; language: string; body: string; buttons: Btn[]; varDefaults: Record<string, string> } | null;
+type Seed = { kind: "text" | "card" | "quick-reply"; name: string; category: string; language: string; body: string; buttons: Btn[]; varDefaults: Record<string, string>; headerType?: "none" | "text" | "image"; headerText?: string; mediaUrl?: string; footer?: string } | null;
 
 /* ── Composer modal ── */
 function Composer({ onClose, onCreated, seed }: { onClose: () => void; onCreated: (t: Tpl | null) => void; seed: Seed }) {
@@ -42,10 +42,10 @@ function Composer({ onClose, onCreated, seed }: { onClose: () => void; onCreated
   const [category, setCategory] = useState(seed?.category ?? "MARKETING");
   const [language, setLanguage] = useState(seed?.language ?? "en");
   const [body, setBody] = useState(seed?.body ?? "");
-  const [headerType, setHeaderType] = useState<"none" | "text" | "image">(initialKind === "card" ? "image" : "none");
-  const [headerText, setHeaderText] = useState("");
-  const [footer, setFooter] = useState("");
-  const [mediaUrl, setMediaUrl] = useState("");
+  const [headerType, setHeaderType] = useState<"none" | "text" | "image">(seed?.headerType ?? (initialKind === "card" ? "image" : "none"));
+  const [headerText, setHeaderText] = useState(seed?.headerText ?? "");
+  const [footer, setFooter] = useState(seed?.footer ?? "");
+  const [mediaUrl, setMediaUrl] = useState(seed?.mediaUrl ?? "");
   const [uploading, setUploading] = useState(false);
   const [buttons, setButtons] = useState<Btn[]>(seed?.buttons?.length ? seed.buttons : isBtnKind ? DEFAULT_BUTTONS : []);
   const [varDefaults, setVarDefaults] = useState<Record<string, string>>(seed?.varDefaults ?? {});
@@ -347,10 +347,20 @@ function Drawer({ t, onClose, onDuplicate, onDelete, busy }: { t: Tpl; onClose: 
               <div className="dlabel">Message preview</div>
               <div className="bubble">
                 <div className={`inner ${isRTL(t.language) ? "rtl" : ""}`}>
+                  {t.media && <img src={t.media} alt="" style={{ width: "100%", borderRadius: 6, marginBottom: 7, display: "block" }} />}
+                  {t.headerText && <div style={{ fontWeight: 700, marginBottom: 4 }}>{renderVars(t.headerText)}</div>}
                   {renderVars(t.body)}
+                  {t.footer && <div style={{ fontSize: 11.5, color: "#8a9398", marginTop: 6 }}>{renderVars(t.footer)}</div>}
                   <div className="btime">12:30 PM <span style={{ color: "#53bdeb" }}>{CHECK2}</span></div>
                 </div>
-                {t.replyButtons.length > 0 && <div className="replies">{t.replyButtons.map((b, i) => <div key={i} className="reply"><Icon d={IC.reply} s={13} />{b}</div>)}</div>}
+                {(() => {
+                  const pv = t.buttons && t.buttons.length ? t.buttons : t.replyButtons.map((title) => ({ type: "QUICK_REPLY", title }));
+                  return pv.length > 0 ? (
+                    <div className="replies">{pv.map((b, i) => (
+                      <div key={i} className="reply"><Icon d={b.type === "URL" ? IC.ext : b.type === "PHONE_NUMBER" ? IC.phone : IC.reply} s={13} />{b.title}</div>
+                    ))}</div>
+                  ) : null;
+                })()}
               </div>
               {t.rejection_reason && (<><div className="dlabel">Rejection reason</div><div className="reject"><b>Rejected by Meta</b>{t.rejection_reason}</div></>)}
               {varCount > 0 && (
@@ -398,7 +408,9 @@ function Row({ t, selected, onOpen }: { t: Tpl; selected: boolean; onOpen: (t: T
     <tr className={selected ? "sel" : ""} onClick={() => onOpen(t)}>
       <td>
         <div className="cell-name">
-          <span className={`tkind ${k}`}><Icon d={k === "card" ? IC.tmpl : k === "qr" ? IC.reply : IC.hash} s={15} /></span>
+          <span className={`tkind ${k}`} style={t.media ? { overflow: "hidden", padding: 0 } : undefined}>
+            {t.media ? <img src={t.media} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <Icon d={k === "card" ? IC.tmpl : k === "qr" ? IC.reply : IC.hash} s={15} />}
+          </span>
           <div className="nm"><div className="t">{t.name}</div><div className="p">{preview}</div></div>
         </div>
       </td>
@@ -482,13 +494,24 @@ export default function Templates() {
 
   function duplicateTpl(t: Tpl) {
     const k: "text" | "card" | "quick-reply" = kindOf(t.type) === "card" ? "card" : t.replyButtons.length || kindOf(t.type) === "qr" ? "quick-reply" : "text";
+    // Map Twilio button types back to the composer's shape so the copy is complete.
+    const btnType = (api: string): Btn["type"] => (api === "URL" ? "url" : api === "PHONE_NUMBER" ? "phone" : "quick-reply");
+    const buttons: Btn[] = k === "text"
+      ? []
+      : (t.buttons && t.buttons.length
+          ? t.buttons.map((b) => ({ type: btnType(b.type), title: b.title, url: b.url || undefined, phone: b.phone || undefined }))
+          : t.replyButtons.map((title) => ({ type: "quick-reply" as const, title })));
     setSeed({
       kind: k,
       name: `${t.name}_copy`.toLowerCase().replace(/[^a-z0-9_]/g, "_"),
       category: t.category || "MARKETING",
       language: t.language || "en",
       body: t.body || "",
-      buttons: k === "quick-reply" ? t.replyButtons.map((title) => ({ type: "quick-reply" as const, title })) : [],
+      headerType: t.media ? "image" : t.headerText ? "text" : "none",
+      headerText: t.headerText || "",
+      mediaUrl: t.media || "",
+      footer: t.footer || "",
+      buttons,
       varDefaults: t.variables || {},
     });
     setActive(null);

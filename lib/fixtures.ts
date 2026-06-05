@@ -3,6 +3,7 @@
    screen and control stays fully interactive. Mirrors the shape of the real
    API responses (Twilio Content API, Supabase conversations, etc.). */
 
+export type TplButton = { type: string; title: string; url?: string | null; phone?: string | null };
 export type Tpl = {
   sid: string;
   name: string;
@@ -15,6 +16,11 @@ export type Tpl = {
   body: string | null;
   replyButtons: string[];
   updated: string;
+  // Card extras (surfaced by /api/templates so previews show the full creative)
+  media?: string | null;
+  headerText?: string | null;
+  footer?: string | null;
+  buttons?: TplButton[];
 };
 
 export const SEED_TEMPLATES: Tpl[] = [

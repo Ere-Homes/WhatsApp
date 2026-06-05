@@ -14,10 +14,13 @@ const STATUS_COLOR: Record<string, string> = {
   sending: "#9a6700", scheduled: "#1a73e8", completed: "#137333", canceled: "#6B6862",
 };
 
+type Funnel = { sent: number; delivered: number; read: number; failed: number; deliveryRate: number; readRate: number };
+
 export default function CampaignHistory() {
   const sb = supabaseBrowser();
   const [rows, setRows] = useState<Campaign[] | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [funnels, setFunnels] = useState<Record<string, Funnel>>({});
 
   async function load() {
     const { data } = await sb.from("campaigns").select("*").order("created_at", { ascending: false }).limit(100);
@@ -26,6 +29,8 @@ export default function CampaignHistory() {
   useEffect(() => {
     // Reconcile active campaigns' counts from delivery results, then load.
     fetch("/api/campaign/refresh", { method: "POST" }).catch(() => {}).finally(load);
+    // Pull the Delivered/Read funnel (from WhatsApp receipts) for every campaign.
+    fetch("/api/campaign/funnel").then((r) => r.json()).then((d) => setFunnels(d.funnel || {})).catch(() => {});
   }, []); // eslint-disable-line
 
   async function cancel(c: Campaign) {
@@ -43,7 +48,10 @@ export default function CampaignHistory() {
     <div style={{ maxWidth: 880, margin: "0 auto", padding: "28px 20px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
         <h1 style={{ fontFamily: "Georgia, serif", fontWeight: 400, fontSize: 24, margin: "0 0 6px" }}>Campaign log</h1>
-        <Link href="/campaigns" style={{ fontSize: 13, color: "#6B6862", textDecoration: "none", whiteSpace: "nowrap" }}>+ New campaign</Link>
+        <div style={{ display: "flex", gap: 14, alignItems: "baseline" }}>
+          <Link href="/templates/performance" style={{ fontSize: 13, color: "#6B6862", textDecoration: "none", whiteSpace: "nowrap" }}>Template performance →</Link>
+          <Link href="/campaigns" style={{ fontSize: 13, color: "#6B6862", textDecoration: "none", whiteSpace: "nowrap" }}>+ New campaign</Link>
+        </div>
       </div>
       <p style={{ color: "#6B6862", fontSize: 14, marginTop: 0, marginBottom: 20 }}>
         Every bulk send, with delivery results. Scheduled campaigns can be canceled before they go out.
@@ -75,6 +83,7 @@ export default function CampaignHistory() {
               {c.skipped > 0 && <Metric label="Skipped" value={c.skipped} color="#6B6862" />}
               {c.failed > 0 && <Metric label="Failed" value={c.failed} color="#b00020" />}
             </div>
+            <FunnelBar f={funnels[c.id]} sent={c.sent} />
             {c.finish_at && c.status === "scheduled" && (
               <div style={{ fontSize: 12, color: "#1a73e8", marginTop: 8 }}>Finishes around {new Date(c.finish_at).toLocaleString()}</div>
             )}
@@ -131,6 +140,26 @@ function statusPill(status: string | null): React.CSSProperties {
   };
   const c = map[status || ""] || "#6B6862";
   return { fontSize: 11, color: c, border: `1px solid ${c}`, borderRadius: 12, padding: "1px 8px", textTransform: "uppercase", letterSpacing: 0.5 };
+}
+// Delivered/Read funnel for a campaign, from WhatsApp receipts. A thin stacked
+// bar (read ⊆ delivered ⊆ sent) plus the headline rates.
+function FunnelBar({ f, sent }: { f: Funnel | undefined; sent: number }) {
+  if (!f || f.sent === 0) return null;
+  const base = f.sent || sent || 1;
+  const pct = (n: number) => `${Math.min(100, Math.round((n / base) * 100))}%`;
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div style={{ position: "relative", height: 8, borderRadius: 6, background: "#EDEBE7", overflow: "hidden" }}>
+        <div style={{ position: "absolute", inset: 0, width: pct(f.delivered), background: "#9BD2A8" }} />
+        <div style={{ position: "absolute", inset: 0, width: pct(f.read), background: "#1a73e8" }} />
+      </div>
+      <div style={{ display: "flex", gap: 16, marginTop: 6, fontSize: 12, color: "#6B6862", flexWrap: "wrap" }}>
+        <span><b style={{ color: "#137333" }}>{f.delivered.toLocaleString()}</b> delivered · {f.deliveryRate}%</span>
+        <span><b style={{ color: "#1a73e8" }}>{f.read.toLocaleString()}</b> read · {f.readRate}% of delivered</span>
+        {f.failed > 0 && <span><b style={{ color: "#b00020" }}>{f.failed.toLocaleString()}</b> failed</span>}
+      </div>
+    </div>
+  );
 }
 function Metric({ label, value, color }: { label: string; value: number; color?: string }) {
   return (

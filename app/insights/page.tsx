@@ -3,7 +3,10 @@ import { useEffect, useState } from "react";
 import { Icon, IC, PageHead, downloadCSV } from "@/lib/ui";
 import { supabaseBrowser } from "@/lib/supabase";
 
-const RANGES: [string, string, number][] = [["7d", "7 days", 7], ["30d", "30 days", 30], ["90d", "90 days", 90]];
+// datetime-local <-> Date helpers (local time, minute precision)
+const pad = (n: number) => String(n).padStart(2, "0");
+const toInput = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+const QUICK: [string, number][] = [["24h", 24], ["7d", 168], ["30d", 720], ["90d", 2160]];
 
 type Totals = { outbound: number; deliveryRate: number; readRate: number; inbound: number };
 type TplRow = { name: string; sent: number; replyRate: number };
@@ -15,7 +18,12 @@ const dash = "—";
 
 export default function Insights() {
   const sb = supabaseBrowser();
-  const [range, setRange] = useState("30d");
+  // Default window: last 24 hours.
+  const [to, setTo] = useState(() => toInput(new Date()));
+  const [from, setFrom] = useState(() => toInput(new Date(Date.now() - 24 * 3600000)));
+  const setQuick = (hours: number) => { const n = new Date(); setTo(toInput(n)); setFrom(toInput(new Date(n.getTime() - hours * 3600000))); };
+  const hrs = Math.max(1, Math.round((new Date(to).getTime() - new Date(from).getTime()) / 3600000));
+  const spanLabel = hrs <= 48 ? `${hrs}h` : `${Math.round(hrs / 24)}d`;
   const [totals, setTotals] = useState<Totals | null>(null);
   const [tpls, setTpls] = useState<TplRow[] | null>(null);
   const [replyRate, setReplyRate] = useState<number | null>(null);
@@ -25,13 +33,13 @@ export default function Insights() {
 
   // Real Twilio messaging totals for the selected window.
   useEffect(() => {
-    const days = RANGES.find((r) => r[0] === range)?.[2] ?? 30;
-    setTotals(null);
-    fetch(`/api/insights?days=${days}`)
+    setTotals(null); setErr(null);
+    const qs = `from=${encodeURIComponent(new Date(from).toISOString())}&to=${encodeURIComponent(new Date(to).toISOString())}`;
+    fetch(`/api/insights?${qs}`)
       .then((r) => r.json())
       .then((d) => { if (d?.totals) setTotals(d.totals); else if (d?.error) setErr(d.error); })
       .catch(() => setErr("Could not load Twilio insights."));
-  }, [range]);
+  }, [from, to]);
 
   // Real per-template performance (last 90 days) → top templates + overall reply rate.
   useEffect(() => {
@@ -58,10 +66,10 @@ export default function Insights() {
 
   // Real lead pipeline from our own conversations (leads = pushed to Pipedrive).
   useEffect(() => {
-    const days = RANGES.find((r) => r[0] === range)?.[2] ?? 30;
-    const since = new Date(Date.now() - days * 86400000).toISOString();
     setPipeline(null);
-    sb.from("conversations").select("lead_status, pipedrive_lead_id, created_at").gte("created_at", since)
+    sb.from("conversations").select("lead_status, pipedrive_lead_id, created_at")
+      .gte("created_at", new Date(from).toISOString())
+      .lte("created_at", new Date(to).toISOString())
       .then(({ data }) => {
         const rows = data || [];
         const pl: Record<string, number> = {};
@@ -74,13 +82,13 @@ export default function Insights() {
         setLeads(l);
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range]);
+  }, [from, to]);
 
   const exportCSV = () => {
     const rows: (string | number)[][] = [["Section", "Name", "Sent", "Reply rate %"]];
     (tpls || []).forEach((t) => rows.push(["Template", t.name, t.sent, t.replyRate]));
     Object.entries(pipeline || {}).forEach(([k, v]) => rows.push(["Lead status", LEAD_LABEL[k] || k, v, ""]));
-    downloadCSV(`ere-insights-${range}.csv`, rows);
+    downloadCSV(`ere-insights-${spanLabel}.csv`, rows);
   };
 
   const kv = (v: string | number | null, suffix = "") => (v === null ? dash : `${v}${suffix}`);
@@ -91,17 +99,20 @@ export default function Insights() {
     <div className="page"><div className="maxw">
       <PageHead title="Insights" sub="Real WhatsApp messaging performance from Twilio and your inbox — no estimates.">
         <div className="seg">
-          {RANGES.map(([id, l]) => (
-            <button key={id} className={range === id ? "on" : ""} onClick={() => setRange(id)}>{l}</button>
+          {QUICK.map(([id, h]) => (
+            <button key={id} className={spanLabel === id ? "on" : ""} onClick={() => setQuick(h)}>{id}</button>
           ))}
         </div>
+        <input type="datetime-local" className="input" style={{ width: 178, marginBottom: 0 }} value={from} max={to} onChange={(e) => setFrom(e.target.value)} title="From" />
+        <span style={{ color: "var(--ink-3)" }}>→</span>
+        <input type="datetime-local" className="input" style={{ width: 178, marginBottom: 0 }} value={to} min={from} onChange={(e) => setTo(e.target.value)} title="To" />
         <button className="btn btn-sec" onClick={exportCSV}><Icon d={IC.dl} s={15} />Export</button>
       </PageHead>
 
       {err && <div className="err-box" style={{ marginBottom: 14 }}>{err}</div>}
 
       <div className="kpis k5">
-        <div className="kpi"><div className="kl">Messages sent</div><div className="kv">{kv(totals ? totals.outbound.toLocaleString() : null)}</div><div className="ks">last {range.replace("d", " days")}</div></div>
+        <div className="kpi"><div className="kl">Messages sent</div><div className="kv">{kv(totals ? totals.outbound.toLocaleString() : null)}</div><div className="ks">last {spanLabel}</div></div>
         <div className="kpi"><div className="kl">Delivery rate</div><div className="kv">{kv(totals ? totals.deliveryRate : null, "%")}</div></div>
         <div className="kpi"><div className="kl">Read rate</div><div className="kv">{kv(totals ? totals.readRate : null, "%")}</div></div>
         <div className="kpi"><div className="kl">Reply rate</div><div className="kv">{kv(replyRate, "%")}</div><div className="ks">marketing · 90d</div></div>
@@ -124,7 +135,7 @@ export default function Insights() {
           </div>
         </div>
         <div className="card">
-          <div className="card-head"><div className="card-t">Lead pipeline</div><div className="card-meta">conversations · {range.replace("d", " days")}</div></div>
+          <div className="card-head"><div className="card-t">Lead pipeline</div><div className="card-meta">conversations · last {spanLabel}</div></div>
           <div className="perf">
             {pipeline === null && <div className="perf-row"><div className="perf-name" style={{ color: "var(--ink-3)" }}>Loading…</div></div>}
             {pipeline && pipeRows.length === 0 && <div className="perf-row"><div className="perf-name" style={{ color: "var(--ink-3)" }}>No conversations in range.</div></div>}

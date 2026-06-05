@@ -10,24 +10,39 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   try {
     const { sid } = twilioCreds();
-    const days = Math.min(Math.max(parseInt(req.nextUrl.searchParams.get("days") || "7", 10), 1), 90);
     const maxPages = Math.min(parseInt(req.nextUrl.searchParams.get("maxPages") || "10", 10), 40);
 
-    // DateSent>=YYYY-MM-DD filter (UTC).
-    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-    const sinceStr = since.toISOString().slice(0, 10);
+    // Window: explicit from/to (ISO) take priority; otherwise fall back to days.
+    const fromParam = req.nextUrl.searchParams.get("from");
+    const toParam = req.nextUrl.searchParams.get("to");
+    const days = Math.min(Math.max(parseInt(req.nextUrl.searchParams.get("days") || "1", 10), 1), 365);
+    const fromMs = fromParam ? Date.parse(fromParam) : Date.now() - days * 24 * 60 * 60 * 1000;
+    const toMs = toParam ? Date.parse(toParam) : Date.now();
+    const fromDate = new Date(isNaN(fromMs) ? Date.now() - 86400000 : fromMs);
+    const toDate = new Date(isNaN(toMs) ? Date.now() : toMs);
+
+    // Twilio's DateSent filter is date-granular; widen the lower bound by a day
+    // so a partial-day "from" still pulls everything, then filter precisely below.
+    const sinceStr = new Date(fromDate.getTime() - 86400000).toISOString().slice(0, 10);
+    const untilStr = toDate.toISOString().slice(0, 10);
 
     let url: string | null =
       `https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json` +
-      `?PageSize=200&DateSent%3E=${sinceStr}`;
+      `?PageSize=200&DateSent%3E=${sinceStr}&DateSent%3C=${untilStr}`;
 
-    const messages: any[] = [];
+    const raw: any[] = [];
     let pages = 0;
     while (url && pages++ < maxPages) {
       const data: any = await twilioGet(url);
-      messages.push(...(data.messages || []));
+      raw.push(...(data.messages || []));
       url = data.next_page_uri ? `https://api.twilio.com${data.next_page_uri}` : null;
     }
+
+    // Precise timestamp filter to the exact [from, to] window.
+    const messages = raw.filter((m) => {
+      const ts = Date.parse(m.date_sent || m.date_created || "");
+      return !isNaN(ts) && ts >= fromDate.getTime() && ts <= toDate.getTime();
+    });
 
     // Aggregate
     const byStatus: Record<string, number> = {};
@@ -91,7 +106,7 @@ export async function GET(req: NextRequest) {
     }));
 
     return NextResponse.json({
-      range: { days, since: sinceStr },
+      range: { from: fromDate.toISOString(), to: toDate.toISOString() },
       totals: {
         total: messages.length,
         outbound,

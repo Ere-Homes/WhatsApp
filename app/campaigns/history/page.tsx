@@ -23,7 +23,10 @@ export default function CampaignHistory() {
     const { data } = await sb.from("campaigns").select("*").order("created_at", { ascending: false }).limit(100);
     setRows((data as Campaign[]) || []);
   }
-  useEffect(() => { load(); }, []); // eslint-disable-line
+  useEffect(() => {
+    // Reconcile active campaigns' counts from delivery results, then load.
+    fetch("/api/campaign/refresh", { method: "POST" }).catch(() => {}).finally(load);
+  }, []); // eslint-disable-line
 
   async function cancel(c: Campaign) {
     if (!confirm(`Cancel the ${c.scheduled} scheduled message(s) still pending in "${c.name}"? Already-sent messages can't be recalled.`)) return;

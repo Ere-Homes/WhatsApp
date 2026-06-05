@@ -27,7 +27,7 @@ function relTime(iso?: string | null) {
 export default function Dashboard() {
   const router = useRouter();
   const go = (p: string) => router.push(p);
-  const [kpis, setKpis] = useState({ conversations: 128, response: 94, campaigns: 3, leads: 17 });
+  const [kpis, setKpis] = useState({ conversations: 128, response: 94, campaigns: 3, leads: 0 });
   const [recent, setRecent] = useState<Recent[]>(RECENT as Recent[]);
 
   // Best-effort: hydrate KPIs and the recent list from the live backend; the
@@ -35,10 +35,15 @@ export default function Dashboard() {
   useEffect(() => {
     (async () => {
       const sb = supabaseBrowser();
-      const [insR, convR, campR] = await Promise.allSettled([
+      const weekAgoISO = new Date(Date.now() - 7 * 86400000).toISOString();
+      const [insR, convR, campR, repliedR, hotR] = await Promise.allSettled([
         fetch("/api/insights?days=1").then((r) => r.json()),
         sb.from("conversations").select("*").order("last_at", { ascending: false }).limit(50),
         sb.from("campaigns").select("id,status").in("status", ["sending", "scheduled"]),
+        // New leads = people who actually replied (inbound) in the last 7 days...
+        sb.from("messages").select("conversation").eq("direction", "in").gte("created_at", weekAgoISO),
+        // ...and are tagged Hot/Warm. The intersection = "replied positively this week".
+        sb.from("conversations").select("id,lead_status").in("lead_status", ["hot", "warm"]),
       ]);
 
       const next = { ...kpis };
@@ -46,9 +51,13 @@ export default function Dashboard() {
       if (convR.status === "fulfilled" && (convR.value as any).data?.length) {
         convs = (convR.value as any).data;
         next.conversations = convs.length;
-        const weekAgo = Date.now() - 7 * 86400000;
-        const leads = convs.filter((c) => ["hot", "warm"].includes((c.lead_status || "").toLowerCase()) && (!c.created_at || new Date(c.created_at).getTime() > weekAgo));
-        if (leads.length) next.leads = leads.length;
+      }
+      // New leads this week: Hot/Warm contacts who actually replied (inbound) in the
+      // last 7 days. A tag alone isn't enough — they must have written back. Always
+      // assign (even 0) so a stale seed value can't linger.
+      if (repliedR.status === "fulfilled" && hotR.status === "fulfilled") {
+        const repliedIds = new Set(((repliedR.value as any).data || []).map((m: any) => m.conversation));
+        next.leads = ((hotR.value as any).data || []).filter((c: any) => repliedIds.has(c.id)).length;
       }
       if (insR.status === "fulfilled" && insR.value?.totals) {
         const t = insR.value.totals;

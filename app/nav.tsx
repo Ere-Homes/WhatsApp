@@ -11,6 +11,7 @@ const TABS = [
   { href: "/campaigns", label: "Campaigns" },
   { href: "/insights", label: "Insights" },
   { href: "/billing", label: "Billing" },
+  { href: "/suppressed", label: "Suppressed" },
 ];
 
 export default function Nav() {

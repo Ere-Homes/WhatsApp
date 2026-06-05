@@ -1,3 +1,4 @@
+// Root layout: global Twilio Paste styles + the app shell (sidebar + top bar).
 import "./globals.css";
 import Shell from "./shell";
 

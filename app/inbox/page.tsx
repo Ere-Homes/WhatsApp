@@ -389,10 +389,20 @@ function CrmContext({ phone }: { phone: string }) {
   }, [phone]);
 
   if (c === undefined) return <div style={ctxBar}><span style={{ color: "#9a958c" }}>Checking CRM…</span></div>;
-  if (c === null) return <div style={ctxBar}><span style={{ color: "#9a958c" }}>Not found in CRM</span></div>;
+  if (c === null) return <div style={ctxBar}><span style={{ color: "#9a958c" }}>Not in Audience CRM yet</span></div>;
+
+  // Where this contact came from: portal / AI lookup (verified_source) and the
+  // import batch or file (source_batch / source_path).
+  const sourceLabel = (() => {
+    const via = c.verified_source && c.verified_source !== "#N/A" ? c.verified_source : null;
+    const batch = c.source_batch && c.source_batch !== "#N/A" ? c.source_batch : null;
+    if (via && batch) return `${via} · ${batch}`;
+    return via || batch || null;
+  })();
 
   const aed = c.total_transaction_value_aed ? `AED ${Number(c.total_transaction_value_aed).toLocaleString()}` : null;
   const chips = [
+    sourceLabel ? `via ${sourceLabel}` : null,
     c.community, c.building, c.unit_type, c.nationality,
     c.tier ? `Tier ${c.tier}` : null,
     c.number_of_transactions ? `${c.number_of_transactions} deal${c.number_of_transactions === 1 ? "" : "s"}` : null,

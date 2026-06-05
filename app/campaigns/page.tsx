@@ -247,7 +247,24 @@ export default function Campaigns() {
       }
       const tail = mode === "drip" ? ` Drip continues until ${drip?.finishLabel}.` : "";
       const sch = scheduled ? `, scheduled ${scheduled}` : "";
-      setDoneMsg(`Sent ${sent}${sch} · skipped ${skipped} (blacklisted) · failed ${failed}.${tail} See it in the campaign log.`);
+      // Compile recipients that aren't in the Audience CRM into the Google Sheet,
+      // with where they came from, so they can be added. Best-effort - never
+      // blocks or fails the send.
+      let uncrmNote = "";
+      try {
+        const ex = await fetch("/api/campaign/export-uncrm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ campaignId, campaignName: tpl?.name, mode: source, phones: numbers, sentAt: new Date().toISOString() }),
+        });
+        const ed = await ex.json();
+        if (ex.ok && ed.notInCrm > 0) {
+          uncrmNote = ed.logged
+            ? ` · ${ed.notInCrm} not in CRM → added to the Sheet.`
+            : ` · ${ed.notInCrm} not in CRM (Sheet not configured).`;
+        }
+      } catch { /* ignore - export is best-effort */ }
+      setDoneMsg(`Sent ${sent}${sch} · skipped ${skipped} (blacklisted) · failed ${failed}.${tail}${uncrmNote} See it in the campaign log.`);
     } catch (e: any) {
       setErr(e.message);
     } finally {

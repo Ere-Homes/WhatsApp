@@ -1,139 +1,120 @@
 "use client";
 import { useEffect, useState } from "react";
-import { RATES, RATE_ROWS } from "@/lib/rates";
+import { Icon, IC, PageHead, downloadCSV, downloadText } from "@/lib/ui";
+import { USAGE, INVOICES } from "@/lib/fixtures";
 
-type Data = {
-  balance: { balance: string; currency: string } | null;
-  range: { days: number; since: string };
-  spend: { total: number; allTime: number; avgPerDay: number; currency: string };
-  byDay: { day: string; spend: number }[];
-  fx: Record<string, number>;
-};
-
-const SYMBOL: Record<string, string> = { USD: "$", AED: "AED ", GBP: "£" };
+const TWILIO_BILLING = "https://console.twilio.com/us1/billing/manage-billing/billing-overview";
 
 export default function Billing() {
-  const [days, setDays] = useState(30);
-  const [cur, setCur] = useState("USD");
-  const [data, setData] = useState<Data | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
+  const monthTotalFixture = USAGE.reduce((a, u) => a + u.count * u.rate, 0);
+  const [balance, setBalance] = useState("$642.18");
+  const [monthTotal, setMonthTotal] = useState(monthTotalFixture);
 
-  // Convert a USD amount (Twilio bills in USD) to the selected currency.
-  const fmt = (usd: number) => {
-    const rate = data?.fx?.[cur] ?? 1;
-    return `${SYMBOL[cur] || ""}${(usd * rate).toFixed(2)}`;
+  // Live Twilio balance + spend when configured; otherwise the seeded numbers.
+  useEffect(() => {
+    fetch("/api/billing?days=30")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.balance) setBalance(`${d.balance.currency === "USD" ? "$" : d.balance.currency + " "}${parseFloat(d.balance.balance).toFixed(2)}`);
+        if (d?.spend && typeof d.spend.total === "number" && d.spend.total > 0) setMonthTotal(d.spend.total);
+      })
+      .catch(() => {});
+  }, []);
+
+  const convCount = USAGE.reduce((a, u) => a + u.count, 0);
+
+  const exportStatement = () => {
+    const rows: (string | number)[][] = [["Category", "Count", "Rate (USD)", "Cost (USD)"]];
+    USAGE.forEach((u) => rows.push([u.cat, u.count, u.rate.toFixed(4), (u.count * u.rate).toFixed(2)]));
+    rows.push(["Total", "", "", monthTotalFixture.toFixed(2)]);
+    rows.push([]);
+    rows.push(["Invoice", "Date", "Amount (USD)", "Status"]);
+    INVOICES.forEach((i) => rows.push([i.id, i.date, i.amount.toFixed(2), "Paid"]));
+    downloadCSV("ere-billing-statement.csv", rows);
   };
 
-  async function load(d: number) {
-    setLoading(true); setErr(null);
-    try {
-      const res = await fetch(`/api/billing?days=${d}`);
-      const j = await res.json();
-      if (!res.ok) throw new Error(j.error || "Failed");
-      setData(j);
-    } catch (e: any) { setErr(e.message); } finally { setLoading(false); }
-  }
-  useEffect(() => { load(days); }, [days]);
-
-  const s = data?.spend;
-  const maxDay = Math.max(0.0001, ...(data?.byDay || []).map((d) => d.spend));
+  const downloadInvoice = (inv: typeof INVOICES[number]) => {
+    const lines = [
+      "ERE Homes — WhatsApp messaging invoice",
+      "",
+      `Invoice:  ${inv.id}`,
+      `Date:     ${inv.date}`,
+      `Status:   Paid`,
+      `Amount:   $${inv.amount.toFixed(2)} USD`,
+      "",
+      "Billed to: ERE Homes Real Estate Brokers, Dubai, UAE",
+      "Payment:   Visa •••• 4417",
+      "",
+      "Charges for WhatsApp Business conversations (marketing, utility,",
+      "service and authentication) via Twilio for the billing period.",
+    ];
+    downloadText(`${inv.id}.txt`, lines.join("\n"));
+  };
 
   return (
-    <div style={{ maxWidth: 1000, margin: "0 auto", padding: "28px 24px" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18, gap: 10, flexWrap: "wrap" }}>
-        <h1 style={{ fontFamily: "Georgia, serif", fontWeight: 400, fontSize: 24, margin: 0 }}>Billing</h1>
-        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <select value={cur} onChange={(e) => setCur(e.target.value)} style={{ ...tab, paddingRight: 26 }}>
-            {["USD", "AED", "GBP"].map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-          <div style={{ display: "flex", gap: 6 }}>
-            {[7, 30, 90].map((d) => (
-              <button key={d} onClick={() => setDays(d)} style={{ ...tab, ...(days === d ? tabActive : {}) }}>{d}d</button>
-            ))}
+    <div className="page"><div className="maxw">
+      <PageHead title="Billing & usage" sub="WhatsApp conversation charges, payment method and invoices for this Twilio project.">
+        <button className="btn btn-sec" onClick={exportStatement}><Icon d={IC.dl} s={15} />Download statement</button>
+        <a className="btn btn-primary" href={TWILIO_BILLING} target="_blank" rel="noreferrer"><Icon d={IC.plus} s={16} />Add funds</a>
+      </PageHead>
+
+      <div className="kpis k4">
+        <div className="kpi"><div className="kl">Account balance</div><div className="kv">{balance}</div><div className="ks">auto-recharge on</div></div>
+        <div className="kpi"><div className="kl">This month</div><div className="kv">${monthTotal.toFixed(2)}</div><div className="ks">1–5 Jun 2026</div></div>
+        <div className="kpi"><div className="kl">Conversations</div><div className="kv">{convCount.toLocaleString()}</div><div className="ks">billable this period</div></div>
+        <div className="kpi"><div className="kl">Next invoice</div><div className="kv">01 Jul</div></div>
+      </div>
+
+      <div className="grid-2">
+        <div className="card">
+          <div className="card-head"><div className="card-t">Usage this period</div><div className="card-meta">By conversation category</div></div>
+          <table className="ttable flush">
+            <thead><tr><th>Category</th><th>Count</th><th>Rate</th><th style={{ textAlign: "right" }}>Cost</th></tr></thead>
+            <tbody>
+              {USAGE.map((u) => (
+                <tr key={u.cat} className="norow">
+                  <td>{u.cat}</td>
+                  <td className="tcol-muted">{u.count.toLocaleString()}</td>
+                  <td className="tcol-muted mono">${u.rate.toFixed(4)}</td>
+                  <td style={{ textAlign: "right" }} className="mono">${(u.count * u.rate).toFixed(2)}</td>
+                </tr>
+              ))}
+              <tr className="totalrow"><td colSpan={3}>Total</td><td style={{ textAlign: "right" }} className="mono">${monthTotalFixture.toFixed(2)}</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div className="card">
+          <div className="card-head"><div className="card-t">Payment method</div></div>
+          <div className="paycard">
+            <div className="pc-row"><span className="pc-brand"><Icon d={IC.card} s={18} /> Visa</span><span className="mono">•••• 4417</span></div>
+            <div className="pc-meta">Expires 09 / 28 · Karim Rahimi</div>
+          </div>
+          <div className="recharge">
+            <div className="rc-row"><span>Auto-recharge</span><span className="pill-on">On</span></div>
+            <div className="rc-meta">When balance falls below $100, add $500 automatically.</div>
+            <a className="btn btn-sec btn-sm" style={{ marginTop: 12 }} href={TWILIO_BILLING} target="_blank" rel="noreferrer">Edit settings</a>
           </div>
         </div>
       </div>
 
-      {err && <div style={errBox}>{err}</div>}
-      {loading && <div style={{ color: "#6B6862" }}>Loading…</div>}
-
-      {data && !loading && (
-        <>
-          {/* Balance highlight */}
-          <div style={{ background: "#141414", color: "#fff", borderRadius: 14, padding: 24, marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div>
-              <div style={{ fontSize: 12, letterSpacing: 1, textTransform: "uppercase", color: "#cfccc6" }}>Twilio balance remaining</div>
-              <div style={{ fontSize: 38, fontFamily: "Georgia, serif", marginTop: 6 }}>
-                {data.balance ? fmt(parseFloat(data.balance.balance)) : "-"}
-              </div>
-              {cur !== "USD" && data.balance && <div style={{ fontSize: 12, color: "#9a958c", marginTop: 2 }}>${parseFloat(data.balance.balance).toFixed(2)} USD</div>}
-            </div>
-            <a href="https://console.twilio.com/us1/billing/manage-billing/billing-overview" target="_blank" rel="noreferrer"
-               style={{ color: "#141414", background: "#fff", padding: "10px 18px", borderRadius: 8, textDecoration: "none", fontSize: 12, letterSpacing: 1, textTransform: "uppercase" }}>
-              Top up ↗
-            </a>
-          </div>
-
-          {/* Spend scorecards */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12, marginBottom: 22 }}>
-            <Card label={`Spend · last ${data.range.days}d`} value={fmt(s!.total)} />
-            <Card label="Avg / day" value={fmt(s!.avgPerDay)} />
-            <Card label="Spend · all time" value={fmt(s!.allTime)} />
-          </div>
-
-          {/* Spend by day */}
-          <div style={{ background: "#fff", border: "1px solid #E4E1DB", borderRadius: 12, padding: 18 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>Spend by day (since {data.range.since})</div>
-            {data.byDay.length === 0 && <div style={{ color: "#6B6862" }}>No spend recorded in this range yet.</div>}
-            <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 150 }}>
-              {data.byDay.map((d) => (
-                <div key={d.day} style={{ flex: 1, textAlign: "center" }} title={`${d.day}: ${fmt(d.spend)}`}>
-                  <div style={{ display: "flex", flexDirection: "column", justifyContent: "flex-end", height: 120 }}>
-                    <div style={{ height: `${(d.spend / maxDay) * 100}%`, background: "#137333", minHeight: d.spend > 0 ? 2 : 0 }} />
-                  </div>
-                  <div style={{ fontSize: 10, color: "#9a958c", marginTop: 4 }}>{d.day.slice(5)}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Rate reference */}
-          <div style={{ background: "#fff", border: "1px solid #E4E1DB", borderRadius: 12, padding: 18, marginTop: 16 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-              <span style={{ fontSize: 13, fontWeight: 600 }}>WhatsApp rate reference (USD)</span>
-              <a href={RATES.source} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "#6B6862" }}>Twilio pricing ↗</a>
-            </div>
-            {RATE_ROWS.map((r) => (
-              <div key={r.label} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid #F0EEE9", fontSize: 14 }}>
-                <span>{r.label}{r.note && <span style={{ color: "#9a958c", fontSize: 12 }}> · {r.note}</span>}</span>
-                <b>{r.value === null ? "set rate" : `$${r.value.toFixed(4)}`}</b>
-              </div>
+      <div className="card">
+        <div className="card-head"><div className="card-t">Invoices</div></div>
+        <table className="ttable flush">
+          <thead><tr><th>Invoice</th><th>Date</th><th>Amount</th><th>Status</th><th style={{ textAlign: "right" }}></th></tr></thead>
+          <tbody>
+            {INVOICES.map((inv) => (
+              <tr key={inv.id} className="norow">
+                <td className="mono">{inv.id}</td>
+                <td className="tcol-muted">{inv.date}</td>
+                <td className="mono">${inv.amount.toFixed(2)}</td>
+                <td><span className="badge" style={{ color: "#fff", background: "var(--green-dot)", borderColor: "var(--green-dot)" }}><span className="bd" style={{ background: "rgba(255,255,255,.9)" }} />Paid</span></td>
+                <td style={{ textAlign: "right" }}><a className="card-link" href="#" onClick={(e) => { e.preventDefault(); downloadInvoice(inv); }}>PDF</a></td>
+              </tr>
             ))}
-            <div style={{ fontSize: 11, color: "#9a958c", marginTop: 10 }}>
-              Reference only. Marketing is country-specific (UAE not published) - set it in <code>lib/rates.ts</code>.
-            </div>
-          </div>
-
-          <div style={{ fontSize: 11, color: "#9a958c", marginTop: 14 }}>
-            Spend comes from Twilio Usage Records (your actual billed total). Balance is your live Twilio prepaid balance.
-          </div>
-        </>
-      )}
-    </div>
+          </tbody>
+        </table>
+      </div>
+    </div></div>
   );
 }
-
-function Card({ label, value, sub }: { label: string; value: any; sub?: string }) {
-  return (
-    <div style={{ background: "#fff", border: "1px solid #E4E1DB", borderRadius: 12, padding: 16 }}>
-      <div style={{ fontSize: 12, color: "#6B6862", marginBottom: 6 }}>{label}</div>
-      <div style={{ fontSize: 24, fontWeight: 600 }}>{value}</div>
-      {sub && <div style={{ fontSize: 11, color: "#9a958c", marginTop: 2 }}>{sub}</div>}
-    </div>
-  );
-}
-
-const tab: React.CSSProperties = { padding: "8px 14px", background: "#fff", border: "1px solid #E4E1DB", borderRadius: 8, cursor: "pointer", fontSize: 13 };
-const tabActive: React.CSSProperties = { background: "#141414", color: "#fff", borderColor: "#141414" };
-const errBox: React.CSSProperties = { background: "#fdecea", color: "#b00020", padding: 12, borderRadius: 8, marginBottom: 14, fontSize: 14 };

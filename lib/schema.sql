@@ -4,7 +4,7 @@ create table if not exists conversations (
   id             uuid primary key default gen_random_uuid(),
   wa_phone       text not null unique,          -- E.164, no whatsapp: prefix
   name           text,
-  status         text not null default 'open',  -- open | closed | blocked
+  status         text not null default 'open',  -- open | closed | blocked | invalid (dead WhatsApp number)
   last_body      text,
   last_at        timestamptz,
   unread         boolean not null default false, -- inbound arrived, not yet opened
@@ -30,6 +30,7 @@ create table if not exists messages (
   body          text,
   status        text,                         -- queued | sent | delivered | read | failed | received
   twilio_sid    text,
+  error_code    text,                         -- Twilio error code on failure (e.g. 63024)
   content_sid   text,                         -- template SID used (for template performance)
   media_url     text,                         -- attachment URL (media messages)
   created_at    timestamptz not null default now()

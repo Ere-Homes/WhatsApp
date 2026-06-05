@@ -20,10 +20,11 @@ export async function POST(req: NextRequest) {
 
     const db = supabaseAdmin();
 
-    // Pull blacklisted numbers for this batch in one query
+    // Skip opted-out (blocked) AND known-invalid (dead WhatsApp) numbers.
     const phones = recipients.map((r: any) => String(r.phone).replace(/[^0-9+]/g, "").replace("+", ""));
-    const { data: blocked } = await db.from("conversations").select("wa_phone").in("wa_phone", phones).eq("status", "blocked");
-    const blockedSet = new Set((blocked || []).map((b: any) => b.wa_phone));
+    const { data: suppressed } = await db.from("conversations").select("wa_phone, status").in("wa_phone", phones).in("status", ["blocked", "invalid"]);
+    const blockedSet = new Set((suppressed || []).filter((b: any) => b.status === "blocked").map((b: any) => b.wa_phone));
+    const invalidSet = new Set((suppressed || []).filter((b: any) => b.status === "invalid").map((b: any) => b.wa_phone));
 
     const results: any[] = [];
     for (const r of recipients) {
@@ -32,6 +33,7 @@ export async function POST(req: NextRequest) {
       const wa = e164.replace("+", "");
       if (!wa || wa.length < 8) { results.push({ phone: r.phone, status: "invalid" }); continue; }
       if (blockedSet.has(wa)) { results.push({ phone: e164, status: "skipped_blacklist" }); continue; }
+      if (invalidSet.has(wa)) { results.push({ phone: e164, status: "skipped_invalid" }); continue; }
 
       try {
         const tw = await sendTemplate(e164, contentSid, r.vars || undefined, sendAt || undefined, from || undefined);

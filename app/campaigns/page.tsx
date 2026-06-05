@@ -238,7 +238,7 @@ export default function Campaigns() {
         if (!res.ok) throw new Error(d.error || "Batch failed");
         for (const r of d.results) {
           done++;
-          if (r.status === "skipped_blacklist") skipped++;
+          if (r.status === "skipped_blacklist" || r.status === "skipped_invalid") skipped++;
           else if (r.status === "failed" || r.status === "invalid") failed++;
           else if (r.status === "scheduled") scheduled++;
           else sent++;

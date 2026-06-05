@@ -163,6 +163,7 @@ export default function Inbox() {
                       <span style={{ fontSize: 10, marginLeft: 8, color: "#fff", background: leadColor(c.lead_status), padding: "1px 7px", borderRadius: 10, textTransform: "uppercase", letterSpacing: 0.5 }}>{leadLabel(c.lead_status)}</span>
                     )}
                     {c.status === "blocked" && <span style={{ color: "#b00", fontSize: 11, marginLeft: 8 }}>blocked</span>}
+                    {c.status === "invalid" && <span style={{ color: "#9a958c", fontSize: 11, marginLeft: 8 }}>invalid number</span>}
                   </span>
                   {c.last_at && <span style={{ fontSize: 11, color: "#9a958c", whiteSpace: "nowrap" }}>{new Date(c.last_at).toLocaleDateString([], { month: "short", day: "numeric" })}</span>}
                 </div>

@@ -109,7 +109,11 @@ export default function Inbox() {
   }
 
   async function loadMsgs(id: string) {
-    const { data } = await sb.current.from("messages").select("*").eq("conversation", id).order("created_at");
+    // NOTE: on a fetch error (e.g. the anon client gets throttled mid campaign
+    // blast) we must NOT mark the conversation loaded — caching an empty result
+    // as "loaded" leaves the thread permanently blank until a hard reload.
+    const { data, error } = await sb.current.from("messages").select("*").eq("conversation", id).order("created_at");
+    if (error) return; // leave loaded:false so it shows "Loading…" and retries
     const msgs: UIMsg[] = (data || []).map((m: any) => ({
       id: m.id, from: m.direction === "out" ? "out" : "in",
       t: m.body && m.body !== "[media]" ? m.body : "", at: hhmm(m.created_at), status: m.status, media: m.media_url,
@@ -130,6 +134,17 @@ export default function Inbox() {
     return () => { if (ch) try { sb.current.removeChannel(ch); } catch { /* ignore */ } };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [live, activeId]);
+
+  // Auto-load messages for whichever conversation is active but not yet loaded.
+  // Covers the auto-selected top conversation (loadConvs sets activeId without
+  // fetching its messages) and retries any thread left unloaded by a transient
+  // loadMsgs error, so the thread never sits blank waiting for a click.
+  useEffect(() => {
+    if (!activeId) return;
+    const c = convos.find((x) => x.id === activeId);
+    if (c && c.live && !c.loaded) loadMsgs(activeId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId, convos]);
 
   useEffect(() => { if (threadRef.current) threadRef.current.scrollTop = threadRef.current.scrollHeight; }, [activeId, convos]);
 

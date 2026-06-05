@@ -58,6 +58,10 @@ export default function Campaigns() {
   const [crmLoading, setCrmLoading] = useState(false);
   const [crmMatch, setCrmMatch] = useState<number | null>(null); // live segment size
   const [options, setOptions] = useState<Record<string, any[]>>({});
+  const [mobileOnly, setMobileOnly] = useState(true); // WhatsApp delivers to mobiles only
+
+  // Filters sent to the API: the dropdown filters plus the mobile-only flag.
+  const effFilters = { ...crmFilters, mobile_only: mobileOnly ? "1" : "0" };
 
   const wu = WARMUP.find((w) => w.id === warmup)!;
   const DAILY_CAP = wu.cap;
@@ -65,7 +69,7 @@ export default function Campaigns() {
   // Lazy-load CRM filter dropdowns the first time the segment tab opens
   useEffect(() => {
     if (source !== "crm" || options.community) return;
-    ["community", "nationality", "unit_type"].forEach((col) => {
+    ["community", "nationality", "unit_type", "building"].forEach((col) => {
       fetch(`/api/crm/options?col=${col}`).then((r) => r.json()).then((d) => {
         if (d.values) setOptions((prev) => ({ ...prev, [col]: d.values }));
       });
@@ -81,14 +85,14 @@ export default function Campaigns() {
       fetch("/api/crm/count", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filters: crmFilters }),
+        body: JSON.stringify({ filters: effFilters }),
       })
         .then((r) => r.json())
         .then((d) => setCrmMatch(typeof d.count === "number" ? d.count : null))
         .catch(() => setCrmMatch(null));
     }, 400);
     return () => clearTimeout(t);
-  }, [source, JSON.stringify(crmFilters)]); // eslint-disable-line
+  }, [source, JSON.stringify(crmFilters), mobileOnly]); // eslint-disable-line
 
   async function loadSegment() {
     setErr(null);
@@ -97,7 +101,7 @@ export default function Campaigns() {
       const res = await fetch("/api/crm/contacts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filters: crmFilters, limit: crmLimit }),
+        body: JSON.stringify({ filters: effFilters, limit: crmLimit }),
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "Failed to load segment");
@@ -357,12 +361,30 @@ export default function Campaigns() {
         {source === "crm" && (
           <div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 8 }}>
-              {(["community", "nationality", "unit_type"] as const).map((col) => (
+              {(["community", "nationality", "unit_type", "building"] as const).map((col) => (
                 <select key={col} value={crmFilters[col] || ""} onChange={(e) => setCrmFilters({ ...crmFilters, [col]: e.target.value })} style={{ ...input, marginBottom: 0 }}>
                   <option value="">{col.replace("_", " ")}: any</option>
                   {(options[col] || []).map((o: any) => <option key={o.val} value={o.val}>{o.val} ({o.n})</option>)}
                 </select>
               ))}
+              <select value={crmFilters.number_of_properties || ""} onChange={(e) => setCrmFilters({ ...crmFilters, number_of_properties: e.target.value })} style={{ ...input, marginBottom: 0 }}>
+                <option value="">properties: any</option>
+                {["1", "2", "3", "4", "5", "6", "7", "8", "9", "10+"].map((n) => <option key={n} value={n}>{n} {n === "1" ? "property" : "properties"}</option>)}
+              </select>
+              <select value={crmFilters.verified_source || ""} onChange={(e) => setCrmFilters({ ...crmFilters, verified_source: e.target.value })} style={{ ...input, marginBottom: 0 }}>
+                <option value="">source: any</option>
+                {["Property Finder", "Bayut", "AiLookup", "Property Monitor", "Dubizzle"].map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
+              <label style={{ fontSize: 13, color: "#6B6862" }}>Value AED
+                <input type="number" value={crmFilters.value_min || ""} min={0} placeholder="min" onChange={(e) => setCrmFilters({ ...crmFilters, value_min: e.target.value })} style={{ ...input, width: 110, marginLeft: 6, marginBottom: 0, display: "inline-block" }} />
+              </label>
+              <span style={{ color: "#9a958c" }}>to</span>
+              <input type="number" value={crmFilters.value_max || ""} min={0} placeholder="max" onChange={(e) => setCrmFilters({ ...crmFilters, value_max: e.target.value })} style={{ ...input, width: 110, marginBottom: 0 }} />
+              <label style={{ fontSize: 13, color: "#3a3a3a", display: "flex", alignItems: "center", gap: 6, marginLeft: "auto" }}>
+                <input type="checkbox" checked={mobileOnly} onChange={(e) => setMobileOnly(e.target.checked)} /> Mobile numbers only
+              </label>
             </div>
             <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
               <label style={{ fontSize: 13, color: "#6B6862" }}>Max recipients
@@ -377,7 +399,7 @@ export default function Campaigns() {
                 <><b>~{crmMatch.toLocaleString()}</b> contactable contact{crmMatch === 1 ? "" : "s"} match this segment.{crmMatch > crmLimit && <> You’ll load the first <b>{crmLimit.toLocaleString()}</b>.</>}</>
               )}
             </div>
-            <div style={{ fontSize: 11, color: "#9a958c", marginTop: 6 }}>Approximate. Excludes do-not-call, uncontactable, and switchboards.</div>
+            <div style={{ fontSize: 11, color: "#9a958c", marginTop: 6 }}>Approximate, before mobile-only filtering. Excludes do-not-call, uncontactable, and switchboards.{mobileOnly && " Mobile-only is on, so the loaded list will be smaller than this count."}</div>
           </div>
         )}
 

@@ -3,7 +3,11 @@ const clean = (v?: string) => (v || "").replace(/^\uFEFF/, "").trim();
 const URL = () => clean(process.env.CRM_SUPABASE_URL);
 const KEY = () => clean(process.env.CRM_SUPABASE_KEY);
 
-const FILTERABLE = ["community", "nationality", "unit_type", "building", "tier"];
+const FILTERABLE = ["community", "nationality", "unit_type", "building", "tier", "verified_source"];
+
+// A UAE mobile in E.164 (+971 5X XXX XXXX). WhatsApp only delivers to mobiles,
+// so filtering to these cuts most "invalid recipient" (63024) bounces.
+const isUaeMobile = (e164: string) => /^\+9715\d{8}$/.test(e164);
 
 async function crmGet(path: string) {
   const res = await fetch(`${URL()}/rest/v1/${path}`, {
@@ -33,6 +37,17 @@ function contactableParts(filters: Record<string, string>) {
   for (const [k, v] of Object.entries(filters || {})) {
     if (v && FILTERABLE.includes(k)) parts.push(`${k}=eq.${encodeURIComponent(v)}`);
   }
+  // Number of properties (stored in number_of_transactions): exact, or "10+" => >= 10.
+  const props = String(filters?.number_of_properties || "").trim();
+  if (props) {
+    const n = props.replace(/[^0-9]/g, "");
+    if (n) parts.push(props.includes("+") ? `number_of_transactions=gte.${n}` : `number_of_transactions=eq.${n}`);
+  }
+  // Property value band (customizable min/max AED).
+  const vmin = String(filters?.value_min || "").replace(/[^0-9]/g, "");
+  const vmax = String(filters?.value_max || "").replace(/[^0-9]/g, "");
+  if (vmin) parts.push(`total_transaction_value_aed=gte.${vmin}`);
+  if (vmax) parts.push(`total_transaction_value_aed=lte.${vmax}`);
   return parts;
 }
 
@@ -53,16 +68,23 @@ const CRM_RECIP_COLS = "phone,name,community,building,unit_number,nationality,ti
 // Contactable recipients matching the chosen filters, with the fields used to
 // personalize template variables. Phones normalized + deduped.
 export async function crmContacts(filters: Record<string, string>, limit: number) {
+  const want = Math.min(Math.max(limit || 500, 1), 5000);
+  // Mobile-only is on unless explicitly disabled. Over-pull so we can still
+  // return up to `want` recipients after dropping non-mobiles + dupes.
+  const mobileOnly = filters?.mobile_only !== "0" && (filters as any)?.mobile_only !== false;
+  const fetchN = mobileOnly ? Math.min(want * 3, 5000) : want;
   const parts = [`select=${CRM_RECIP_COLS}`, ...contactableParts(filters)];
-  parts.push(`limit=${Math.min(Math.max(limit || 500, 1), 5000)}`);
+  parts.push(`limit=${fetchN}`);
   const rows = await crmGet(`contacts?${parts.join("&")}`);
   const seen = new Set<string>();
   const out: any[] = [];
   for (const r of rows || []) {
     const phone = toE164(r.phone);
     if (!phone || seen.has(phone)) continue;
+    if (mobileOnly && !isUaeMobile(phone)) continue;
     seen.add(phone);
     out.push({ phone, name: r.name || "", community: r.community || "", building: r.building || "", unit_number: r.unit_number || "", nationality: r.nationality || "", tier: r.tier || "" });
+    if (out.length >= want) break;
   }
   return out;
 }

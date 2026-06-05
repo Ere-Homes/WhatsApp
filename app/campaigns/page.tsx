@@ -179,20 +179,31 @@ export default function Campaigns() {
       return setErr(`At ${perBatch} every ${humanInterval(intervalMin)}, this would take longer than Twilio's 7-day limit. Use a bigger batch, a shorter interval, or fewer recipients.`);
     }
 
+    // WhatsApp rejects template params that are empty or contain newlines/tabs/
+    // 4+ spaces (error 63024). Clean every value to avoid that.
+    const clean = (s: string) => (s || "").replace(/[\r\n\t]+/g, " ").replace(/\s{2,}/g, " ").trim();
+
     // Build per-recipient variables: fixed text, or pulled from each contact's
     // CRM record (falling back to the fixed text when a field is empty).
     const recMap = new Map(crmRecips.map((r) => [String(r.phone).replace(/[^0-9]/g, ""), r]));
     const hasMapping = tplVars.length > 0;
+    let blanks = 0;
     const recipients = numbers.map((p) => {
       if (!hasMapping) return { phone: p, vars: undefined };
       const rec = recMap.get(p.replace(/[^0-9]/g, ""));
       const v: Record<string, string> = {};
       for (const k of tplVars) {
         const src = varMap[k] || "fixed";
-        v[k] = src === "fixed" ? (vars[k] || "") : (recordValue(rec, src) || vars[k] || "");
+        const val = clean(src === "fixed" ? (vars[k] || "") : (recordValue(rec, src) || vars[k] || ""));
+        if (!val) blanks++;
+        v[k] = val;
       }
       return { phone: p, vars: v };
     });
+
+    // Empty variables are the #1 cause of 63024 — warn before sending.
+    if (blanks > 0 && !confirm(`Heads up: ${blanks} variable value(s) are blank across your recipients (missing CRM data and no fallback). WhatsApp rejects blank variables (error 63024). Set a fallback for each variable, or continue and those sends may fail. Continue anyway?`)) return;
+
     const calls = buildPlan(recipients); // [{ batch, sendAt? }]
     const verb = mode === "now" ? "send now" : mode === "later" ? `schedule for ${new Date(sendAt).toLocaleString()}` : `drip ${perBatch} every ${humanInterval(intervalMin)} (finishes ${drip?.finishLabel})`;
     if (!confirm(`This will ${verb} to ${numbers.length} recipient(s) using "${tpl?.name}". Blacklisted contacts are skipped. Continue?`)) return;

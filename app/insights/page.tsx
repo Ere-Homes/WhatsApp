@@ -85,8 +85,15 @@ export default function Insights() {
   }, [from, to]);
 
   const exportCSV = () => {
-    const rows: (string | number)[][] = [["Section", "Name", "Sent", "Reply rate %"]];
-    (tpls || []).forEach((t) => rows.push(["Template", t.name, t.sent, t.replyRate]));
+    const rows: (string | number)[][] = [["Section", "Name", "Value", "Detail"]];
+    // Headline KPIs first — the actual numbers shown on the page, so an exported
+    // report isn't just templates + pipeline with the metrics missing.
+    rows.push(["Metric", "Messages sent", totals?.outbound ?? "", `last ${spanLabel}`]);
+    rows.push(["Metric", "Delivery rate %", totals?.deliveryRate ?? "", `last ${spanLabel}`]);
+    rows.push(["Metric", "Read rate %", totals?.readRate ?? "", `last ${spanLabel}`]);
+    rows.push(["Metric", "Reply rate %", replyRate ?? "", "marketing · 90d"]);
+    rows.push(["Metric", "Leads to Pipedrive", leads ?? "", `last ${spanLabel}`]);
+    (tpls || []).forEach((t) => rows.push(["Template", t.name, t.sent, `${t.replyRate}% reply`]));
     Object.entries(pipeline || {}).forEach(([k, v]) => rows.push(["Lead status", LEAD_LABEL[k] || k, v, ""]));
     downloadCSV(`ere-insights-${spanLabel}.csv`, rows);
   };

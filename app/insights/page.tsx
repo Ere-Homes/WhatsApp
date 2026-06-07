@@ -8,8 +8,24 @@ const pad = (n: number) => String(n).padStart(2, "0");
 const toInput = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 const QUICK: [string, number][] = [["24h", 24], ["7d", 168], ["30d", 720], ["90d", 2160]];
 
-type Totals = { outbound: number; deliveryRate: number; readRate: number; inbound: number };
+type Totals = { outbound: number; deliveryRate: number; readRate: number; inbound: number; failed: number; undelivered: number; failRate: number };
 type TplRow = { name: string; sent: number; replyRate: number };
+
+// Plain-English labels for the WhatsApp/Twilio error codes we actually see, so a
+// failed-delivery line reads "not on WhatsApp" instead of a bare "63016".
+const ERR_LABEL: Record<string, string> = {
+  "63003": "channel auth failed",
+  "63005": "blocked by Meta",
+  "63013": "policy violation",
+  "63016": "outside 24h window",
+  "63018": "rate limited",
+  "63024": "invalid template",
+  "63049": "not on WhatsApp",
+  "21211": "invalid number",
+  "21610": "recipient unsubscribed",
+  "30008": "unknown carrier error",
+};
+const errLabel = (code: string) => `${code} — ${ERR_LABEL[code] || "see Twilio docs"}`;
 const LEAD_ORDER = ["hot", "warm", "new", "cold", "won", "lost"] as const;
 const LEAD_LABEL: Record<string, string> = { new: "New", hot: "Hot", warm: "Warm", cold: "Cold", won: "Won", lost: "Lost" };
 const LEAD_COLOR: Record<string, string> = { hot: "var(--red)", warm: "var(--amber-dot)", new: "var(--ink-3)", cold: "var(--blue)", won: "var(--green-dot)", lost: "var(--ink-3)" };
@@ -25,6 +41,7 @@ export default function Insights() {
   const hrs = Math.max(1, Math.round((new Date(to).getTime() - new Date(from).getTime()) / 3600000));
   const spanLabel = hrs <= 48 ? `${hrs}h` : `${Math.round(hrs / 24)}d`;
   const [totals, setTotals] = useState<Totals | null>(null);
+  const [byErr, setByErr] = useState<Record<string, number>>({});
   const [tpls, setTpls] = useState<TplRow[] | null>(null);
   const [replyRate, setReplyRate] = useState<number | null>(null);
   const [leads, setLeads] = useState<number | null>(null);
@@ -33,11 +50,11 @@ export default function Insights() {
 
   // Real Twilio messaging totals for the selected window.
   useEffect(() => {
-    setTotals(null); setErr(null);
+    setTotals(null); setByErr({}); setErr(null);
     const qs = `from=${encodeURIComponent(new Date(from).toISOString())}&to=${encodeURIComponent(new Date(to).toISOString())}`;
     fetch(`/api/insights?${qs}`)
       .then((r) => r.json())
-      .then((d) => { if (d?.totals) setTotals(d.totals); else if (d?.error) setErr(d.error); })
+      .then((d) => { if (d?.totals) { setTotals(d.totals); setByErr(d.byErr || {}); } else if (d?.error) setErr(d.error); })
       .catch(() => setErr("Could not load Twilio insights."));
   }, [from, to]);
 
@@ -90,7 +107,8 @@ export default function Insights() {
     // report isn't just templates + pipeline with the metrics missing.
     rows.push(["Metric", "Messages sent", totals?.outbound ?? "", `last ${spanLabel}`]);
     rows.push(["Metric", "Delivery rate %", totals?.deliveryRate ?? "", `last ${spanLabel}`]);
-    rows.push(["Metric", "Read rate %", totals?.readRate ?? "", `last ${spanLabel}`]);
+    rows.push(["Metric", "Failed/undelivered", totals ? failedCount : "", topErr ? errLabel(topErr) : ""]);
+    rows.push(["Metric", "Read rate %", totals?.readRate ?? "", "of delivered"]);
     rows.push(["Metric", "Reply rate %", replyRate ?? "", "marketing · 90d"]);
     rows.push(["Metric", "Leads to Pipedrive", leads ?? "", `last ${spanLabel}`]);
     (tpls || []).forEach((t) => rows.push(["Template", t.name, t.sent, `${t.replyRate}% reply`]));
@@ -101,6 +119,9 @@ export default function Insights() {
   const kv = (v: string | number | null, suffix = "") => (v === null ? dash : `${v}${suffix}`);
   const pipeRows = LEAD_ORDER.filter((k) => (pipeline?.[k] ?? 0) > 0);
   const pipeMax = Math.max(1, ...Object.values(pipeline || {}));
+  // Failed deliveries + the single most common reason, to explain the delivery rate.
+  const failedCount = totals ? totals.failed + totals.undelivered : 0;
+  const topErr = Object.entries(byErr).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
 
   return (
     <div className="page"><div className="maxw">
@@ -120,8 +141,8 @@ export default function Insights() {
 
       <div className="kpis k5">
         <div className="kpi"><div className="kl">Messages sent</div><div className="kv">{kv(totals ? totals.outbound.toLocaleString() : null)}</div><div className="ks">last {spanLabel}</div></div>
-        <div className="kpi"><div className="kl">Delivery rate</div><div className="kv">{kv(totals ? totals.deliveryRate : null, "%")}</div></div>
-        <div className="kpi"><div className="kl">Read rate</div><div className="kv">{kv(totals ? totals.readRate : null, "%")}</div></div>
+        <div className="kpi"><div className="kl">Delivery rate</div><div className="kv">{kv(totals ? totals.deliveryRate : null, "%")}</div><div className="ks">{totals ? (failedCount ? `${failedCount.toLocaleString()} failed${topErr ? ` · ${errLabel(topErr)}` : ""}` : "none failed") : "of sent"}</div></div>
+        <div className="kpi"><div className="kl">Read rate</div><div className="kv">{kv(totals ? totals.readRate : null, "%")}</div><div className="ks">of delivered</div></div>
         <div className="kpi"><div className="kl">Reply rate</div><div className="kv">{kv(replyRate, "%")}</div><div className="ks">marketing · 90d</div></div>
         <div className="kpi"><div className="kl">Leads to Pipedrive</div><div className="kv">{leads === null ? dash : leads.toLocaleString()}</div></div>
       </div>

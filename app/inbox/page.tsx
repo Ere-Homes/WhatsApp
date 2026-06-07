@@ -10,6 +10,7 @@ type UIConv = {
   id: string; name: string; phone: string; waPhone?: string;
   tag: "Hot" | "Warm" | ""; lead?: string; unread: number; time: string; community: string;
   live: boolean; loaded: boolean; messages: UIMsg[]; blocked?: boolean;
+  lastBody?: string; lastDirection?: string;
 };
 
 const LEADS = [
@@ -92,6 +93,7 @@ export default function Inbox() {
         id: c.id, name: c.name || "+" + c.wa_phone, phone: formatPhone(c.wa_phone), waPhone: c.wa_phone,
         tag: tagOf(c.lead_status), lead: c.lead_status || "new", unread: c.unread ? 1 : 0, time: hhmm(c.last_at),
         community: c.community || "", live: true, loaded: false, messages: [], blocked: c.status === "blocked",
+        lastBody: c.last_body || "", lastDirection: c.last_direction || "",
       }));
       setLive(true);
       setConvos((prev) => {
@@ -224,9 +226,14 @@ export default function Inbox() {
                   <div className="ci-top"><span className="ci-name">{c.name}</span><span className="ci-time">{c.time}</span></div>
                   <div className="ci-bottom">
                     <span className="ci-msg">{(() => {
-                      if (!c.messages.length) return c.live ? "Tap to open" : "";
-                      const last = c.messages[c.messages.length - 1];
-                      return last.t || (last.media ? "📷 Photo" : "");
+                      if (c.messages.length) {
+                        const last = c.messages[c.messages.length - 1];
+                        return last.t || (last.media ? "📷 Photo" : "");
+                      }
+                      const b = c.lastBody || "";
+                      if (b === "[media]") return "📷 Photo";
+                      if (b === "[template]") return "Template message";
+                      return b;
                     })()}</span>
                     {c.unread > 0 && <span className="unread">{c.unread}</span>}
                   </div>

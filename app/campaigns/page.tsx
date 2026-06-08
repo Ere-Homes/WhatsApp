@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { RATES } from "@/lib/rates";
 import { supabaseBrowser } from "@/lib/supabase";
@@ -22,8 +22,33 @@ const CRM_VAR_FIELDS = [
 ];
 function recordValue(rec: any, field: string): string {
   if (!rec) return "";
+  // Pasted-CSV records carry named columns (first_name, community, ...) directly;
+  // use them as-is so a value like "Abdul Aziz" is not truncated to one word.
+  if (rec[field] != null && String(rec[field]).trim() !== "") return String(rec[field]).trim();
   if (field === "first_name") return String(rec.name || "").trim().split(/\s+/)[0] || "";
   return rec[field] != null ? String(rec[field]) : "";
+}
+
+// Parse a pasted / uploaded CSV that has a header row including a phone column,
+// into per-recipient records so its other columns (first_name, community, ...)
+// can personalize template variables - not just supply the phone number.
+function parsePastedRecords(raw: string): { records: any[]; valueCols: string[] } | null {
+  const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (lines.length < 2) return null;
+  const header = lines[0].split(",").map((h) => h.trim().toLowerCase());
+  const phoneIdx = header.findIndex((h) => h.includes("phone") || h === "number" || h === "mobile" || h === "msisdn");
+  if (phoneIdx === -1) return null; // no header row -> treat as plain phone list
+  const valueCols = header.filter((_, i) => i !== phoneIdx);
+  const records: any[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cells = lines[i].split(",");
+    const phone = (cells[phoneIdx] || "").replace(/[^0-9]/g, "");
+    if (!phone) continue;
+    const rec: any = { phone };
+    header.forEach((h, idx) => { if (idx !== phoneIdx) rec[h] = (cells[idx] || "").trim(); });
+    records.push(rec);
+  }
+  return records.length ? { records, valueCols } : null;
 }
 // Warm-up profiles. A brand-new WhatsApp sender shouldn't blast its full tier
 // on day one - Meta ramps you (250 -> 1K -> 10K -> 100K) only while quality
@@ -173,6 +198,26 @@ export default function Campaigns() {
   const tpl = tpls.find((t) => t.sid === tplSid);
   const tplVars = tpl ? Object.keys(tpl.variables || {}) : [];
 
+  // Structured records from a pasted/uploaded CSV with a header (phone + columns).
+  const pasted = useMemo(() => (source === "manual" ? parsePastedRecords(raw) : null), [raw, source]);
+
+  // Auto-map template variables to the CSV's columns in order ({{1}}->first col after
+  // phone, {{2}}->next, ...) so a pasted list personalizes without manual mapping.
+  useEffect(() => {
+    if (!tpl || source !== "manual" || !pasted?.valueCols.length) return;
+    const fieldIds = new Set(CRM_VAR_FIELDS.map((f) => f.id));
+    setVarMap((prev) => {
+      if (Object.keys(prev).length) return prev; // respect manual choices
+      const next: Record<string, string> = {};
+      tplVars.forEach((k, i) => {
+        const col = pasted.valueCols[i];
+        if (col && fieldIds.has(col)) next[k] = col;
+      });
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tplSid, raw, source]);
+
   // Parse phone numbers from pasted text or CSV (first phone-like token per line)
   const numbers = Array.from(
     new Set(
@@ -226,7 +271,8 @@ export default function Campaigns() {
 
     // Build per-recipient variables: fixed text, or pulled from each contact's
     // CRM record (falling back to the fixed text when a field is empty).
-    const recMap = new Map(crmRecips.map((r) => [String(r.phone).replace(/[^0-9]/g, ""), r]));
+    const pastedRecs = pasted?.records || [];
+    const recMap = new Map([...crmRecips, ...pastedRecs].map((r) => [String(r.phone).replace(/[^0-9]/g, ""), r]));
     const hasMapping = tplVars.length > 0;
     let blanks = 0;
     const recipients = numbers.map((p) => {
@@ -370,8 +416,10 @@ export default function Campaigns() {
                 </div>
               );
             })}
-            {Object.values(varMap).some((v) => v !== "fixed") && source !== "crm" && (
-              <div style={{ fontSize: 12, color: "#9a6700", marginTop: 6 }}>CRM fields only fill for recipients loaded from a CRM segment - pasted numbers will use the fallback text.</div>
+            {pasted?.valueCols.length ? (
+              <div style={{ fontSize: 12, color: "#2e7d32", marginTop: 6 }}>Personalizing from your CSV columns: {pasted.valueCols.join(", ")}.</div>
+            ) : Object.values(varMap).some((v) => v !== "fixed") && source !== "crm" && (
+              <div style={{ fontSize: 12, color: "#9a6700", marginTop: 6 }}>CRM fields only fill for recipients loaded from a CRM segment. A plain pasted number list uses the fallback text. Include a header row (phone,first_name,community) to personalize from a CSV.</div>
             )}
           </div>
         )}

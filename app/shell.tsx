@@ -246,7 +246,7 @@ function TopBar({ path, navOpen, onMenu }: { path: string; navOpen: boolean; onM
       <button className="icon-btn" title="Turn on lead alerts" aria-label="Turn on lead alerts" onClick={enableAlerts}><Icon d={IC.bell} s={18} /><span className="ping" /></button>
       <a className="icon-btn" href="https://www.twilio.com/docs/whatsapp" target="_blank" rel="noreferrer" title="Help" aria-label="Help"><Icon d={IC.help} s={18} /></a>
       <div className="top-avatar">
-        <span onClick={() => setMenuOpen((o) => !o)}><Avatar name="Karim Rahimi" size={30} /></span>
+        <button className="avatar-trigger" onClick={() => setMenuOpen((o) => !o)} title="Account menu" aria-label="Account menu" aria-haspopup="menu" aria-expanded={menuOpen}><Avatar name="Karim Rahimi" size={30} /></button>
         {menuOpen && (
           <>
             <div className="acct-scrim" onClick={() => setMenuOpen(false)} />

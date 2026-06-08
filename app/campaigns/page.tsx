@@ -8,6 +8,8 @@ import { formatPhone } from "@/lib/format";
 type Tpl = { sid: string; name: string; status: string; body: string | null; variables: Record<string, string> };
 
 const BATCH = 25;
+// Named CRM segments are saved locally (single-user console - no backend needed).
+const SEG_KEY = "ere_wa_segments";
 // CRM fields a template variable can be personalized from.
 const CRM_VAR_FIELDS = [
   { id: "first_name", label: "First name" },
@@ -59,6 +61,7 @@ export default function Campaigns() {
   const [crmMatch, setCrmMatch] = useState<number | null>(null); // live segment size
   const [options, setOptions] = useState<Record<string, any[]>>({});
   const [mobileOnly, setMobileOnly] = useState(true); // WhatsApp delivers to mobiles only
+  const [savedSegs, setSavedSegs] = useState<Record<string, { filters: Record<string, string>; mobileOnly: boolean; limit: number }>>({});
 
   // Filters sent to the API: the dropdown filters plus the mobile-only flag.
   const effFilters = { ...crmFilters, mobile_only: mobileOnly ? "1" : "0" };
@@ -114,6 +117,40 @@ export default function Campaigns() {
       setCrmLoading(false);
     }
   }
+
+  // Load saved segments once on mount.
+  useEffect(() => {
+    try { const s = localStorage.getItem(SEG_KEY); if (s) setSavedSegs(JSON.parse(s)); } catch { /* ignore */ }
+  }, []);
+  function persistSegs(next: typeof savedSegs) {
+    setSavedSegs(next);
+    try { localStorage.setItem(SEG_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+  }
+  function saveSegment() {
+    const name = prompt('Name this segment (e.g. "Palm owners, 2+ properties")')?.trim();
+    if (!name) return;
+    persistSegs({ ...savedSegs, [name]: { filters: crmFilters, mobileOnly, limit: crmLimit } });
+  }
+  function applySegment(name: string) {
+    const s = savedSegs[name]; if (!s) return;
+    setCrmFilters(s.filters || {}); setMobileOnly(s.mobileOnly ?? true); setCrmLimit(s.limit || 500);
+  }
+  function deleteSegment(name: string) {
+    if (!confirm(`Delete saved segment "${name}"?`)) return;
+    const next = { ...savedSegs }; delete next[name]; persistSegs(next);
+  }
+
+  // Active filters as removable chips, so it's obvious what's narrowing the list.
+  function filterChips(): { key: string; label: string }[] {
+    const f = crmFilters; const out: { key: string; label: string }[] = [];
+    const labels: Record<string, string> = { community: "community", nationality: "nationality", unit_type: "unit type", building: "building", verified_source: "source" };
+    for (const k of Object.keys(labels)) if (f[k]) out.push({ key: k, label: `${labels[k]}: ${f[k]}` });
+    if (f.number_of_properties) out.push({ key: "number_of_properties", label: `${f.number_of_properties} propert${f.number_of_properties === "1" ? "y" : "ies"}` });
+    if (f.value_min) out.push({ key: "value_min", label: `≥ AED ${Number(f.value_min).toLocaleString()}` });
+    if (f.value_max) out.push({ key: "value_max", label: `≤ AED ${Number(f.value_max).toLocaleString()}` });
+    return out;
+  }
+  function clearFilter(key: string) { const n = { ...crmFilters }; delete n[key]; setCrmFilters(n); }
 
   useEffect(() => {
     fetch("/api/templates").then((r) => r.json()).then((d) => {
@@ -360,6 +397,17 @@ export default function Campaigns() {
 
         {source === "crm" && (
           <div>
+            {Object.keys(savedSegs).length > 0 && (
+              <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
+                <span style={{ fontSize: 13, color: "#6B6862" }}>Saved:</span>
+                {Object.keys(savedSegs).map((name) => (
+                  <span key={name} style={{ ...pill, padding: "4px 10px", fontSize: 12, display: "inline-flex", gap: 6, alignItems: "center" }}>
+                    <button onClick={() => applySegment(name)} title="Load this segment" style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 12, color: "inherit" }}>{name}</button>
+                    <button onClick={() => deleteSegment(name)} title="Delete" style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: "#9a958c" }}>×</button>
+                  </span>
+                ))}
+              </div>
+            )}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 8 }}>
               {(["community", "nationality", "unit_type", "building"] as const).map((col) => (
                 <select key={col} value={crmFilters[col] || ""} onChange={(e) => setCrmFilters({ ...crmFilters, [col]: e.target.value })} style={{ ...input, marginBottom: 0 }}>
@@ -386,6 +434,16 @@ export default function Campaigns() {
                 <input type="checkbox" checked={mobileOnly} onChange={(e) => setMobileOnly(e.target.checked)} /> Mobile numbers only
               </label>
             </div>
+            {filterChips().length > 0 && (
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 10 }}>
+                {filterChips().map((c) => (
+                  <button key={c.key} onClick={() => clearFilter(c.key)} title="Remove filter" style={{ ...pill, padding: "4px 10px", fontSize: 12, display: "inline-flex", gap: 6, alignItems: "center" }}>
+                    {c.label} <span style={{ color: "#9a958c" }}>×</span>
+                  </button>
+                ))}
+                <button onClick={() => setCrmFilters({})} style={{ ...pill, padding: "4px 10px", fontSize: 12, color: "#6B6862" }}>Clear all</button>
+              </div>
+            )}
             <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
               <label style={{ fontSize: 13, color: "#6B6862" }}>Max recipients
                 <input type="number" value={crmLimit} min={1} max={5000} onChange={(e) => setCrmLimit(parseInt(e.target.value || "500", 10))} style={{ ...input, width: 90, marginLeft: 6, marginBottom: 0, display: "inline-block" }} />
@@ -393,17 +451,32 @@ export default function Campaigns() {
               <button onClick={loadSegment} disabled={crmLoading} style={{ ...pillActive, padding: "8px 16px", borderRadius: 8, border: "none", cursor: "pointer" }}>
                 {crmLoading ? "Loading…" : "Load recipients"}
               </button>
+              <button onClick={saveSegment} title="Save these filters as a reusable segment" style={{ ...pill, padding: "8px 14px" }}>Save segment</button>
             </div>
-            <div style={{ marginTop: 10, fontSize: 13, padding: "8px 12px", background: "#F5F5F5", borderRadius: 8, color: "#3a3a3a" }}>
-              {crmMatch == null ? "Counting matching contacts…" : (
-                <><b>~{crmMatch.toLocaleString()}</b> contactable contact{crmMatch === 1 ? "" : "s"} match this segment.{crmMatch > crmLimit && <> You’ll load the first <b>{crmLimit.toLocaleString()}</b>.</>}</>
+            <div style={{ marginTop: 10, padding: "10px 12px", background: "#F5F5F5", borderRadius: 8, color: "#3a3a3a" }}>
+              {crmMatch == null ? (
+                <span style={{ fontSize: 13, color: "#6B6862" }}>Counting matching contacts…</span>
+              ) : (
+                <>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+                    <b style={{ fontSize: 18 }}>~{crmMatch.toLocaleString()}</b>
+                    <span style={{ fontSize: 13 }}>contact{crmMatch === 1 ? "" : "s"} match this segment</span>
+                  </div>
+                  <div style={{ fontSize: 13, marginTop: 4 }}>
+                    You’ll load up to <b>{Math.min(crmLimit, crmMatch).toLocaleString()}</b>{mobileOnly && <span style={{ color: "#6B6862" }}> — fewer after mobile-only filtering</span>}.
+                  </div>
+                </>
               )}
             </div>
-            <div style={{ fontSize: 11, color: "#9a958c", marginTop: 6 }}>Approximate, before mobile-only filtering. Excludes do-not-call, uncontactable, and switchboards.{mobileOnly && " Mobile-only is on, so the loaded list will be smaller than this count."}</div>
+            <div style={{ fontSize: 11, color: "#9a958c", marginTop: 6 }} title="Excludes any contact marked do-not-call, uncontactable, or as a switchboard number.">Approximate, before mobile-only filtering. Excludes do-not-call, uncontactable, and switchboards.{mobileOnly && " Mobile-only is on, so the loaded list will be smaller than this count."}</div>
           </div>
         )}
 
-        <div style={{ fontSize: 13, color: numbers.length ? "#137333" : "#9a958c", fontWeight: 600, marginTop: 10 }}>{numbers.length} valid recipient{numbers.length === 1 ? "" : "s"}</div>
+        {(numbers.length > 0 || (source === "manual" && raw.trim() !== "")) && (
+          <div style={{ fontSize: 13, color: numbers.length ? "#137333" : "#9a958c", fontWeight: 600, marginTop: 10 }}>
+            {numbers.length} valid recipient{numbers.length === 1 ? "" : "s"}{source === "crm" && numbers.length > 0 ? " loaded" : ""}
+          </div>
+        )}
       </Section>
 
       <Section title="3 · Send from">

@@ -248,7 +248,7 @@ export default function Inbox() {
         {active ? (
           <div className="thread-col">
             <div className="thread-head">
-              <button className="icon-btn th-back" onClick={() => setShowThread(false)} title="Back"><Icon d={IC.cleft} s={18} /></button>
+              <button className="icon-btn th-back" onClick={() => setShowThread(false)} title="Back" aria-label="Back to conversations"><Icon d={IC.cleft} s={18} /></button>
               <Avatar name={active.name} size={40} />
               <div className="th-main">
                 <div className="th-name">{active.name}{active.blocked && <span style={{ color: "var(--red-ink)", fontSize: 11, marginLeft: 8 }}>blocked</span>}</div>

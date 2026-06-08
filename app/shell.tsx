@@ -36,12 +36,16 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const isLogin = path === "/login";
   const [vw, setVw] = useState(1200);
   const [navOpen, setNavOpen] = useState(true);
+  // Until mounted we don't know the real width, so CSS owns the default
+  // (shown on desktop, hidden on mobile) — avoids a one-frame sidebar flash.
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     const h = () => setVw(window.innerWidth);
     h();
     const saved = localStorage.getItem("om_nav");
     setNavOpen(saved !== null ? saved === "1" : window.innerWidth > 900);
+    setMounted(true);
     window.addEventListener("resize", h);
     return () => window.removeEventListener("resize", h);
   }, []);
@@ -70,7 +74,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="app">
-      <Sidebar path={activeKey} open={navOpen} isMobile={isMobile} onClose={() => setNavOpen(false)} closeOnNav={closeOnNav} />
+      <Sidebar path={activeKey} open={navOpen} mounted={mounted} isMobile={isMobile} onClose={() => setNavOpen(false)} closeOnNav={closeOnNav} />
       {navOpen && isMobile && <div className="nav-scrim" onClick={() => setNavOpen(false)} />}
       <div className="main">
         <TopBar path={activeKey} navOpen={navOpen} onMenu={() => setNavOpen(true)} />
@@ -81,7 +85,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
 }
 
 /* ── Sidebar ── */
-function Sidebar({ path, open, isMobile, onClose, closeOnNav }: { path: string; open: boolean; isMobile: boolean; onClose: () => void; closeOnNav: () => void }) {
+function Sidebar({ path, open, mounted, isMobile, onClose, closeOnNav }: { path: string; open: boolean; mounted: boolean; isMobile: boolean; onClose: () => void; closeOnNav: () => void }) {
   const [acctOpen, setAcctOpen] = useState(false);
   const [senders, setSenders] = useState<Sender[]>(SENDERS);
   const [senderId, setSenderId] = useState<string>(SENDERS[0].id);
@@ -140,11 +144,11 @@ function Sidebar({ path, open, isMobile, onClose, closeOnNav }: { path: string; 
   const pick = (id: string) => { setSenderId(id); localStorage.setItem("om_sender", id); setAcctOpen(false); };
 
   return (
-    <aside className={`sidebar ${open ? "" : "collapsed"}`}>
+    <aside className={`sidebar ${!mounted ? "pre-mount" : open ? "" : "collapsed"}`}>
       <div className="side-brand">
         <div className="side-logo brand-tile" aria-label="ERE Homes">ERE</div>
         <div className="bt"><div className="n">ERE Homes</div><div className="s">Messaging</div></div>
-        <button className="side-toggle" onClick={onClose} title="Hide sidebar"><Icon d={IC.cleft} s={18} /></button>
+        <button className="side-toggle" onClick={onClose} title="Hide sidebar" aria-label="Hide sidebar"><Icon d={IC.cleft} s={18} /></button>
       </div>
 
       <div className="side-acct-wrap">
@@ -224,7 +228,7 @@ function TopBar({ path, navOpen, onMenu }: { path: string; navOpen: boolean; onM
 
   return (
     <header className="topbar">
-      {!navOpen && <button className="icon-btn" onClick={onMenu} title="Show sidebar"><Icon d={IC.menu} s={18} /></button>}
+      {!navOpen && <button className="icon-btn" onClick={onMenu} title="Show sidebar" aria-label="Show sidebar"><Icon d={IC.menu} s={18} /></button>}
       <div className="crumb">
         <span>Messaging</span>
         {crumbs.map((c, i) => (
@@ -239,8 +243,8 @@ function TopBar({ path, navOpen, onMenu }: { path: string; navOpen: boolean; onM
         <input ref={searchRef} id="om-search" placeholder="Search resources, SID, docs…" onKeyDown={onSearchKey} />
         {combo && <kbd>{combo}</kbd>}
       </div>
-      <button className="icon-btn" title="Turn on lead alerts" onClick={enableAlerts}><Icon d={IC.bell} s={18} /><span className="ping" /></button>
-      <a className="icon-btn" href="https://www.twilio.com/docs/whatsapp" target="_blank" rel="noreferrer" title="Help"><Icon d={IC.help} s={18} /></a>
+      <button className="icon-btn" title="Turn on lead alerts" aria-label="Turn on lead alerts" onClick={enableAlerts}><Icon d={IC.bell} s={18} /><span className="ping" /></button>
+      <a className="icon-btn" href="https://www.twilio.com/docs/whatsapp" target="_blank" rel="noreferrer" title="Help" aria-label="Help"><Icon d={IC.help} s={18} /></a>
       <div className="top-avatar">
         <span onClick={() => setMenuOpen((o) => !o)}><Avatar name="Karim Rahimi" size={30} /></span>
         {menuOpen && (

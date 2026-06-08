@@ -91,6 +91,10 @@ function Composer({ onClose, onCreated, seed }: { onClose: () => void; onCreated
     setMsg(null);
     if (!name.trim()) return setErr("Template name is required.");
     if (!body.trim()) return setErr("Body text is required.");
+    // A data: URI means the image never uploaded to a public URL; Twilio rejects it.
+    if (kind === "card" && headerType === "image" && mediaUrl && !/^https?:\/\//i.test(mediaUrl)) {
+      return setErr("The header image has not finished uploading to a public URL. Re-add the image, wait for the preview, then submit.");
+    }
     setBusy(true);
 
     const vars: Record<string, string> = {};
@@ -120,15 +124,21 @@ function Composer({ onClose, onCreated, seed }: { onClose: () => void; onCreated
     try {
       const res = await fetch("/api/templates", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed");
-      setMsg(`Submitted “${name}” to Meta for review. Status: ${data.status || "pending"}.`);
+      if (!res.ok) throw new Error(data.error || "Failed to create the template");
+      // Only treat it as created if Twilio actually returned a real Content SID.
+      if (!data.sid || !String(data.sid).startsWith("HX")) {
+        throw new Error(data.approvalError || "Twilio did not return a template SID, so nothing was created.");
+      }
+      const note = data.approvalError
+        ? `Created “${name}” but approval was NOT submitted: ${data.approvalError}`
+        : `Submitted “${name}” to Meta for review. Status: ${data.status || "pending"}.`;
+      setMsg(note);
       setBusy(false);
-      setTimeout(() => onCreated({ ...localTpl, sid: data.sid || localTpl.sid, status: data.status === "approved" ? "approved" : "pending" }), 850);
-    } catch {
-      // No live backend — add the template optimistically so the flow completes.
-      setMsg(`Submitted “${name}” to Meta for review. Status: pending.`);
+      setTimeout(() => onCreated({ ...localTpl, sid: data.sid, status: data.status === "approved" ? "approved" : "pending" }), 850);
+    } catch (e: any) {
+      // Surface the real failure instead of faking a phantom template that vanishes on refresh.
+      setErr(e?.message || "Could not create the template. Nothing was saved to Twilio.");
       setBusy(false);
-      setTimeout(() => onCreated(localTpl), 850);
     }
   }
 

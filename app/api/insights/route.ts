@@ -47,6 +47,11 @@ export async function GET(req: NextRequest) {
       return !isNaN(ts) && ts >= fromDate.getTime() && ts <= toDate.getTime();
     });
 
+    // WhatsApp error codes that mean "this number cannot receive WhatsApp" (a dead
+    // number), as opposed to a content/template problem we caused. These are not real
+    // delivery failures, so they should not drag down the delivery rate.
+    const NOT_ON_WHATSAPP = new Set(["63049", "63003"]);
+
     // Aggregate
     const byStatus: Record<string, number> = {};
     const byErr: Record<string, number> = {};
@@ -57,6 +62,7 @@ export async function GET(req: NextRequest) {
       read = 0,
       failed = 0,
       undelivered = 0,
+      notOnWhatsApp = 0,
       priceTotal = 0;
     let currency = "USD";
 
@@ -76,6 +82,7 @@ export async function GET(req: NextRequest) {
       if (m.error_code) {
         const k = String(m.error_code);
         byErr[k] = (byErr[k] || 0) + 1;
+        if (isOut && NOT_ON_WHATSAPP.has(k)) notOnWhatsApp++;
       }
 
       if (m.price) {
@@ -92,7 +99,12 @@ export async function GET(req: NextRequest) {
 
     // delivered+read count as reaching the handset
     const reached = delivered + read;
+    // "Real" sends exclude numbers that aren't on WhatsApp - those were never deliverable
+    // and shouldn't be counted as sent or held against the delivery rate.
+    const validOutbound = Math.max(0, outbound - notOnWhatsApp);
     const deliveryRate = outbound ? Math.round((reached / outbound) * 1000) / 10 : 0;
+    // Delivery rate among reachable (on-WhatsApp) numbers only - the honest one.
+    const deliveryRateValid = validOutbound ? Math.round((reached / validOutbound) * 1000) / 10 : 0;
     const readRate = reached ? Math.round((read / reached) * 1000) / 10 : 0;
     const failRate = outbound ? Math.round(((failed + undelivered) / outbound) * 1000) / 10 : 0;
 
@@ -113,12 +125,15 @@ export async function GET(req: NextRequest) {
       totals: {
         total: messages.length,
         outbound,
+        validOutbound,
+        notOnWhatsApp,
         inbound,
         delivered,
         read,
         failed,
         undelivered,
         deliveryRate,
+        deliveryRateValid,
         readRate,
         failRate,
         priceTotal: Math.round(priceTotal * 10000) / 10000,

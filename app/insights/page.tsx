@@ -8,7 +8,7 @@ const pad = (n: number) => String(n).padStart(2, "0");
 const toInput = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 const QUICK: [string, number][] = [["24h", 24], ["7d", 168], ["30d", 720], ["90d", 2160]];
 
-type Totals = { outbound: number; deliveryRate: number; readRate: number; inbound: number; failed: number; undelivered: number; failRate: number };
+type Totals = { outbound: number; validOutbound: number; notOnWhatsApp: number; deliveryRate: number; deliveryRateValid: number; readRate: number; inbound: number; failed: number; undelivered: number; failRate: number };
 type TplRow = { name: string; sent: number; replyRate: number };
 
 // Plain-English labels for the WhatsApp/Twilio error codes we actually see, so a
@@ -105,9 +105,12 @@ export default function Insights() {
     const rows: (string | number)[][] = [["Section", "Name", "Value", "Detail"]];
     // Headline KPIs first — the actual numbers shown on the page, so an exported
     // report isn't just templates + pipeline with the metrics missing.
-    rows.push(["Metric", "Messages sent", totals?.outbound ?? "", `last ${spanLabel}`]);
-    rows.push(["Metric", "Delivery rate %", totals?.deliveryRate ?? "", `last ${spanLabel}`]);
-    rows.push(["Metric", "Failed/undelivered", totals ? failedCount : "", topErr ? errLabel(topErr) : ""]);
+    rows.push(["Metric", "Messages attempted", totals?.outbound ?? "", `last ${spanLabel}`]);
+    rows.push(["Metric", "Messages sent (on WhatsApp)", totals?.validOutbound ?? "", `${notOnWA} not on WhatsApp`]);
+    rows.push(["Metric", "Not on WhatsApp", notOnWA, "dead numbers (63049/63003)"]);
+    rows.push(["Metric", "Delivery rate % (reachable)", totals?.deliveryRateValid ?? "", `of ${totals?.validOutbound ?? ""} on WhatsApp`]);
+    rows.push(["Metric", "Delivery rate % (all attempts)", totals?.deliveryRate ?? "", `of ${totals?.outbound ?? ""} attempted`]);
+    rows.push(["Metric", "Failed/undelivered (real)", realFailed, topRealErr ? errLabel(topRealErr) : ""]);
     rows.push(["Metric", "Read rate %", totals?.readRate ?? "", "of delivered"]);
     rows.push(["Metric", "Reply rate %", replyRate ?? "", "marketing · 90d"]);
     rows.push(["Metric", "Leads to Pipedrive", leads ?? "", `last ${spanLabel}`]);
@@ -120,8 +123,14 @@ export default function Insights() {
   const pipeRows = LEAD_ORDER.filter((k) => (pipeline?.[k] ?? 0) > 0);
   const pipeMax = Math.max(1, ...Object.values(pipeline || {}));
   // Failed deliveries + the single most common reason, to explain the delivery rate.
+  // Numbers not on WhatsApp are dead numbers, not real delivery failures - break them
+  // out so the headline "sent" and delivery rate reflect reachable numbers only.
+  const NOT_ON_WA = new Set(["63049", "63003"]);
   const failedCount = totals ? totals.failed + totals.undelivered : 0;
+  const notOnWA = totals ? totals.notOnWhatsApp : 0;
+  const realFailed = Math.max(0, failedCount - notOnWA);
   const topErr = Object.entries(byErr).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+  const topRealErr = Object.entries(byErr).filter(([k]) => !NOT_ON_WA.has(k)).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
 
   return (
     <div className="page"><div className="maxw">
@@ -140,8 +149,8 @@ export default function Insights() {
       {err && <div className="err-box" style={{ marginBottom: 14 }}>{err}</div>}
 
       <div className="kpis k5">
-        <div className="kpi"><div className="kl">Messages sent</div><div className="kv">{kv(totals ? totals.outbound.toLocaleString() : null)}</div><div className="ks">last {spanLabel}</div></div>
-        <div className="kpi"><div className="kl">Delivery rate</div><div className="kv">{kv(totals ? totals.deliveryRate : null, "%")}</div><div className="ks">{totals ? (failedCount ? `${failedCount.toLocaleString()} failed${topErr ? ` · ${errLabel(topErr)}` : ""}` : "none failed") : "of sent"}</div></div>
+        <div className="kpi" title={totals ? `${totals.outbound.toLocaleString()} attempted, ${notOnWA.toLocaleString()} not on WhatsApp` : ""}><div className="kl">Messages sent</div><div className="kv">{kv(totals ? totals.validOutbound.toLocaleString() : null)}</div><div className="ks">{totals ? (notOnWA ? `${notOnWA.toLocaleString()} not on WhatsApp` : `last ${spanLabel}`) : `last ${spanLabel}`}</div></div>
+        <div className="kpi" title="Delivery rate among numbers that are on WhatsApp (excludes dead numbers)"><div className="kl">Delivery rate</div><div className="kv">{kv(totals ? totals.deliveryRateValid : null, "%")}</div><div className="ks">{totals ? (realFailed ? `${realFailed.toLocaleString()} failed${topRealErr ? ` · ${errLabel(topRealErr)}` : ""}` : `of ${totals.validOutbound.toLocaleString()} on WhatsApp`) : "of sent"}</div></div>
         <div className="kpi"><div className="kl">Read rate</div><div className="kv">{kv(totals ? totals.readRate : null, "%")}</div><div className="ks">of delivered</div></div>
         <div className="kpi"><div className="kl">Reply rate</div><div className="kv">{kv(replyRate, "%")}</div><div className="ks">marketing · 90d</div></div>
         <div className="kpi"><div className="kl">Leads to Pipedrive</div><div className="kv">{leads === null ? dash : leads.toLocaleString()}</div></div>

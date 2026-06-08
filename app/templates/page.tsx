@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { Icon, IC, Badge, PageHead, Skeleton, CHECK2, sm, kindOf, TYPE_LABEL, LANG_LABEL, isRTL, renderVars, fmtUpdated, LANGUAGES } from "@/lib/ui";
 import { SEED_TEMPLATES, type Tpl } from "@/lib/fixtures";
 
@@ -532,6 +533,7 @@ export default function Templates() {
     <div className="page">
       <div className="maxw">
         <PageHead title="Content templates" sub="Pre-approved WhatsApp messages your team sends to owners and buyers. Compose, submit to Meta, and track approval.">
+          <Link className="btn btn-sec" href="/templates/performance"><Icon d={IC.insights} s={15} />Performance</Link>
           <button className="btn btn-sec" onClick={load}><Icon d={IC.refresh} s={15} />{loading ? "Loading…" : "Refresh"}</button>
           <button className="btn btn-primary" onClick={() => { setSeed(null); setComposer(true); }}><Icon d={IC.plus} s={16} />Create new</button>
         </PageHead>

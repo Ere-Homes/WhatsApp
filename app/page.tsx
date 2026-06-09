@@ -2,10 +2,12 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon, IC, Avatar, PageHead } from "@/lib/ui";
-import { RECENT, TPL_PERF } from "@/lib/fixtures";
 import { supabaseBrowser } from "@/lib/supabase";
 
 type Recent = { name: string; msg: string; time: string; unread: number; tag: string };
+type Perf = { name: string; sent: number; replyRate: number };
+type Kpis = { conversations: number | null; response: number | null; campaigns: number | null; leads: number | null };
+const dash = (n: number | null) => (n === null ? "—" : n);
 
 function TagDot({ tag }: { tag: string }) {
   if (!tag) return null;
@@ -27,11 +29,13 @@ function relTime(iso?: string | null) {
 export default function Dashboard() {
   const router = useRouter();
   const go = (p: string) => router.push(p);
-  const [kpis, setKpis] = useState({ conversations: 128, response: 94, campaigns: 3, leads: 0 });
-  const [recent, setRecent] = useState<Recent[]>(RECENT as Recent[]);
+  // Start empty (null) so nothing renders as real until the live backend
+  // answers. A dash shows for unknown values; cards show loading/empty states.
+  const [kpis, setKpis] = useState<Kpis>({ conversations: null, response: null, campaigns: null, leads: null });
+  const [recent, setRecent] = useState<Recent[] | null>(null);
+  const [perf, setPerf] = useState<Perf[] | null>(null);
 
-  // Best-effort: hydrate KPIs and the recent list from the live backend; the
-  // fixtures above stand in when Supabase/Twilio aren't configured.
+  // Hydrate KPIs and the recent list from the live backend.
   useEffect(() => {
     (async () => {
       const sb = supabaseBrowser();
@@ -67,17 +71,32 @@ export default function Dashboard() {
       if (campR.status === "fulfilled" && (campR.value as any).data) next.campaigns = (campR.value as any).data.length;
       setKpis(next);
 
-      if (convs.length) {
-        const tagOf = (s?: string) => (s || "").toLowerCase() === "hot" ? "Hot" : (s || "").toLowerCase() === "warm" ? "Warm" : "";
-        setRecent(convs.slice(0, 5).map((c) => ({
-          name: c.name || "+" + c.wa_phone,
-          msg: c.last_body || "",
-          time: relTime(c.last_at),
-          unread: c.unread ? 1 : 0,
-          tag: tagOf(c.lead_status),
-        })));
-      }
-    })().catch(() => {});
+      const tagOf = (s?: string) => (s || "").toLowerCase() === "hot" ? "Hot" : (s || "").toLowerCase() === "warm" ? "Warm" : "";
+      setRecent(convs.slice(0, 5).map((c) => ({
+        name: c.name || "+" + c.wa_phone,
+        msg: c.last_body || "",
+        time: relTime(c.last_at),
+        unread: c.unread ? 1 : 0,
+        tag: tagOf(c.lead_status),
+      })));
+    })().catch(() => setRecent([]));
+
+    // Real per-template performance, busiest first (top 4).
+    Promise.all([
+      fetch("/api/templates").then((r) => r.json()).catch(() => ({})),
+      fetch("/api/templates/performance").then((r) => r.json()).catch(() => ({})),
+    ]).then(([t, p]) => {
+      const tpls: any[] = t.templates || [];
+      const stats: Record<string, any> = p.stats || {};
+      setPerf(
+        tpls
+          .map((x) => ({ name: x.name, s: stats[x.sid] }))
+          .filter((x) => x.s && x.s.sent > 0)
+          .sort((a, b) => b.s.sent - a.s.sent)
+          .slice(0, 4)
+          .map((x) => ({ name: x.name, sent: x.s.sent, replyRate: x.s.replyRate })),
+      );
+    }).catch(() => setPerf([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -89,10 +108,10 @@ export default function Dashboard() {
       </PageHead>
 
       <div className="kpis k4">
-        <div className="kpi"><div className="kl">Conversations today</div><div className="kv">{kpis.conversations}</div></div>
-        <div className="kpi"><div className="kl">Response rate</div><div className="kv">{kpis.response}%</div></div>
-        <div className="kpi"><div className="kl">Active campaigns</div><div className="kv">{kpis.campaigns}</div></div>
-        <div className="kpi"><div className="kl">New leads this week</div><div className="kv">{kpis.leads}</div></div>
+        <div className="kpi"><div className="kl">Conversations today</div><div className="kv">{dash(kpis.conversations)}</div></div>
+        <div className="kpi"><div className="kl">Response rate</div><div className="kv">{kpis.response === null ? "—" : `${kpis.response}%`}</div></div>
+        <div className="kpi"><div className="kl">Active campaigns</div><div className="kv">{dash(kpis.campaigns)}</div></div>
+        <div className="kpi"><div className="kl">New leads this week</div><div className="kv">{dash(kpis.leads)}</div></div>
       </div>
 
       <div className="grid-2">
@@ -102,7 +121,7 @@ export default function Dashboard() {
             <a className="card-link" href="/inbox" onClick={(e) => { e.preventDefault(); go("/inbox"); }}>Go to inbox</a>
           </div>
           <div className="convlist-mini">
-            {recent.map((c, i) => (
+            {(recent || []).map((c, i) => (
               <div className="cm-row" key={c.name + i} onClick={() => go("/inbox")}>
                 <Avatar name={c.name} size={36} />
                 <div className="cm-main">
@@ -112,7 +131,8 @@ export default function Dashboard() {
                 <div className="cm-side"><span className="cm-time">{c.time}</span>{c.unread > 0 && <span className="unread">{c.unread}</span>}</div>
               </div>
             ))}
-            {recent.length === 0 && <div className="empty sm">No conversations yet.</div>}
+            {recent === null && <div className="empty sm">Loading…</div>}
+            {recent !== null && recent.length === 0 && <div className="empty sm">No conversations yet.</div>}
           </div>
         </div>
 
@@ -122,13 +142,15 @@ export default function Dashboard() {
             <a className="card-link" href="/insights" onClick={(e) => { e.preventDefault(); go("/insights"); }}>View all</a>
           </div>
           <div className="perf">
-            {TPL_PERF.map((t) => (
+            {(perf || []).map((t) => (
               <div className="perf-row" key={t.name}>
                 <div className="perf-name mono">{t.name}</div>
                 <div className="perf-stat">{t.sent} sent</div>
-                <div className="perf-stat strong">{Math.round((t.reply / t.sent) * 100)}% reply</div>
+                <div className="perf-stat strong">{t.replyRate}% reply</div>
               </div>
             ))}
+            {perf === null && <div className="empty sm">Loading…</div>}
+            {perf !== null && perf.length === 0 && <div className="empty sm">No template sends yet.</div>}
           </div>
         </div>
       </div>

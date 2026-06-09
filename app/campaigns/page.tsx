@@ -78,6 +78,7 @@ export default function Campaigns() {
   const [senders, setSenders] = useState<string[]>([]);
   const [sender, setSender] = useState("");
   const [optIn, setOptIn] = useState(false);
+  const [excludeReached, setExcludeReached] = useState(true); // skip contacts already reached
   const [sentToday, setSentToday] = useState<number | null>(null);
   const [warmup, setWarmup] = useState<typeof WARMUP[number]["id"]>("warming");
   const [source, setSource] = useState<"manual" | "crm">("manual");
@@ -288,9 +289,31 @@ export default function Campaigns() {
     // CRM record (falling back to the fixed text when a field is empty).
     const pastedRecs = pasted?.records || [];
     const recMap = new Map([...crmRecips, ...pastedRecs].map((r) => [String(r.phone).replace(/[^0-9]/g, ""), r]));
+    // Skip contacts who already received this (a delivered/read WhatsApp) so a
+    // re-send never double-messages anyone. Failed / never-sent numbers are NOT
+    // "reached", so they correctly stay in for a retry.
+    let sendNumbers = numbers;
+    if (excludeReached) {
+      try {
+        const rr = await fetch("/api/campaign/already-reached", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phones: numbers }),
+        });
+        const rd = await rr.json();
+        const reached = new Set<string>((rd.reached || []).map((p: string) => String(p).replace(/[^0-9]/g, "")));
+        if (reached.size) {
+          const before = sendNumbers.length;
+          sendNumbers = sendNumbers.filter((p) => !reached.has(p.replace(/[^0-9]/g, "")));
+          const dropped = before - sendNumbers.length;
+          if (dropped > 0 && !confirm(`${dropped} of these already received a WhatsApp from ERE and will be skipped (no double-messaging). Send to the remaining ${sendNumbers.length}?`)) return;
+        }
+      } catch { /* best-effort: if the lookup fails, fall back to sending to all */ }
+    }
+    if (sendNumbers.length === 0) return setErr("Everyone on this list has already been reached. Nothing to send.");
+
     const hasMapping = tplVars.length > 0;
     let blanks = 0;
-    const recipients = numbers.map((p) => {
+    const recipients = sendNumbers.map((p) => {
       if (!hasMapping) return { phone: p, vars: undefined };
       const rec = recMap.get(p.replace(/[^0-9]/g, ""));
       const v: Record<string, string> = {};
@@ -376,7 +399,7 @@ export default function Campaigns() {
         const ex = await fetch("/api/campaign/export-uncrm", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ campaignId, campaignName: tpl?.name, mode: source, phones: numbers, sentAt: new Date().toISOString() }),
+          body: JSON.stringify({ campaignId, campaignName: tpl?.name, mode: source, phones: sendNumbers, sentAt: new Date().toISOString() }),
         });
         const ed = await ex.json();
         if (ex.ok && ed.notInCrm > 0) {
@@ -650,6 +673,10 @@ export default function Campaigns() {
         <label style={{ fontSize: 14, display: "flex", gap: 8, alignItems: "flex-start", cursor: "pointer", marginBottom: 10 }}>
           <input type="checkbox" checked={optIn} onChange={(e) => setOptIn(e.target.checked)} style={{ marginTop: 3 }} />
           <span>I confirm these recipients <b>opted in</b> to receive WhatsApp messages from ERE Homes.</span>
+        </label>
+        <label style={{ fontSize: 14, display: "flex", gap: 8, alignItems: "flex-start", cursor: "pointer", marginBottom: 10 }}>
+          <input type="checkbox" checked={excludeReached} onChange={(e) => setExcludeReached(e.target.checked)} style={{ marginTop: 3 }} />
+          <span><b>Skip anyone already reached.</b> Drops contacts who already got a delivered/read message, so a re-send never double-messages them. Failed or never-sent numbers stay in for a retry.</span>
         </label>
         <div style={{ fontSize: 13, background: "#FFF8E6", border: "1px solid #F0E2B8", borderRadius: 8, padding: "8px 12px", marginBottom: 10, color: "#6b5a16" }}>
           + Make sure this template gives a clear way out (e.g. “Reply STOP to unsubscribe”). When someone replies STOP they’re blacklisted automatically and never messaged again.

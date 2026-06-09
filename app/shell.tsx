@@ -89,7 +89,9 @@ function Sidebar({ path, open, mounted, isMobile, onClose, closeOnNav }: { path:
   const [acctOpen, setAcctOpen] = useState(false);
   const [senders, setSenders] = useState<Sender[]>(SENDERS);
   const [senderId, setSenderId] = useState<string>(SENDERS[0].id);
-  const [unread, setUnread] = useState<number>(7);
+  // Start at 0 so the badge stays hidden until the live unread count loads —
+  // never show a seed number as if it were real.
+  const [unread, setUnread] = useState<number>(0);
 
   // Load real WhatsApp senders; fall back to the fixtures.
   useEffect(() => {
@@ -116,8 +118,8 @@ function Sidebar({ path, open, mounted, isMobile, onClose, closeOnNav }: { path:
     return () => { live = false; };
   }, []);
 
-  // Live unread badge (Supabase). Falls back to the prototype's "7" when the
-  // backend isn't configured.
+  // Live unread badge (Supabase). Stays at 0 (hidden) when the backend isn't
+  // configured or returns nothing — no seed number.
   useEffect(() => {
     const sb = supabaseBrowser();
     let live = true;

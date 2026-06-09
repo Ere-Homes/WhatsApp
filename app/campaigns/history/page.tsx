@@ -10,10 +10,6 @@ type Campaign = {
 };
 type Recipient = { status: string | null; created_at: string; scheduled_at?: string | null; conversation: { wa_phone: string; name: string | null } | null };
 
-const STATUS_COLOR: Record<string, string> = {
-  sending: "#9a6700", scheduled: "#1a73e8", completed: "#137333", canceled: "#6B6862", incomplete: "#c1571f",
-};
-
 type Funnel = { sent: number; delivered: number; read: number; failed: number; deliveryRate: number; readRate: number };
 
 export default function CampaignHistory() {
@@ -93,17 +89,12 @@ export default function CampaignHistory() {
                   {c.mode !== "now" && <> · {c.mode}</>}
                 </div>
               </div>
-              <span style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1, color: STATUS_COLOR[c.status] || "#6B6862", border: `1px solid ${STATUS_COLOR[c.status] || "#ccc"}`, borderRadius: 20, padding: "3px 10px", whiteSpace: "nowrap" }}>{c.status}</span>
+              {(() => { const ds = displayStatus(c, funnels[c.id]); return (
+                <span style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1, color: ds.color, border: `1px solid ${ds.color}`, borderRadius: 20, padding: "3px 10px", whiteSpace: "nowrap" }}>{ds.label}</span>
+              ); })()}
             </div>
 
-            <div style={{ display: "flex", gap: 18, marginTop: 12, flexWrap: "wrap", fontSize: 13 }}>
-              <Metric label="Recipients" value={c.total} />
-              <Metric label="Sent" value={c.sent} color="#137333" />
-              {c.scheduled > 0 && <Metric label="Scheduled" value={c.scheduled} color="#1a73e8" />}
-              {c.skipped > 0 && <Metric label="Skipped" value={c.skipped} color="#6B6862" />}
-              {c.failed > 0 && <Metric label="Failed" value={c.failed} color="#b00020" />}
-            </div>
-            <FunnelBar f={funnels[c.id]} sent={c.sent} />
+            <Coverage c={c} f={funnels[c.id]} />
             <DripTracker c={c} />
 
             <div style={{ display: "flex", gap: 14, marginTop: 12 }}>
@@ -169,22 +160,57 @@ function statusPill(status: string | null): React.CSSProperties {
   const c = map[status || ""] || "#6B6862";
   return { fontSize: 11, color: c, border: `1px solid ${c}`, borderRadius: 12, padding: "1px 8px", textTransform: "uppercase", letterSpacing: 0.5 };
 }
-// Delivered/Read funnel for a campaign, from WhatsApp receipts. A thin stacked
-// bar (read ⊆ delivered ⊆ sent) plus the headline rates.
-function FunnelBar({ f, sent }: { f: Funnel | undefined; sent: number }) {
-  if (!f || f.sent === 0) return null;
-  const base = f.sent || sent || 1;
-  const pct = (n: number) => `${Math.min(100, Math.round((n / base) * 100))}%`;
+// Honest, at-a-glance coverage from real WhatsApp receipts (NOT the rollup
+// counters, which drift). Of everyone we meant to message: how many reached a
+// handset, how many are still in flight, how many failed, how many never sent.
+function reach(c: Campaign, f: Funnel | undefined) {
+  const total = c.total || 0;
+  const delivered = f?.delivered || 0;        // reached a handset (includes read)
+  const read = f?.read || 0;
+  const failed = f?.failed || 0;
+  const acceptedByWa = f?.sent || 0;          // accepted by WhatsApp, not failed
+  const pending = Math.max(0, acceptedByWa - delivered); // queued/sent/scheduled, no receipt yet
+  const notSent = Math.max(0, total - acceptedByWa - failed);
+  return { total, delivered, read, failed, pending, notSent, deliveryRate: f?.deliveryRate || 0 };
+}
+// Status the user can trust: an old "completed" run that never reached everyone
+// is shown as "Incomplete", so the label matches reality.
+function displayStatus(c: Campaign, f: Funnel | undefined): { label: string; color: string } {
+  if (c.status === "scheduled") return { label: "Scheduled", color: "#1a73e8" };
+  if (c.status === "sending") return { label: "Sending", color: "#9a6700" };
+  if (c.status === "canceled") return { label: "Canceled", color: "#6B6862" };
+  if (c.status === "incomplete" || (c.status === "completed" && reach(c, f).notSent > 0))
+    return { label: "Incomplete", color: "#c1571f" };
+  return { label: "Completed", color: "#137333" };
+}
+function Coverage({ c, f }: { c: Campaign; f: Funnel | undefined }) {
+  const r = reach(c, f);
+  const w = (n: number) => `${(n / Math.max(1, r.total)) * 100}%`;
+  const Legend = ({ n, label, color }: { n: number; label: string; color: string }) =>
+    n > 0 ? (
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+        <span style={{ width: 8, height: 8, borderRadius: 2, background: color }} />
+        <b style={{ color }}>{n.toLocaleString()}</b> {label}
+      </span>
+    ) : null;
   return (
     <div style={{ marginTop: 12 }}>
-      <div style={{ position: "relative", height: 8, borderRadius: 6, background: "#EDEBE7", overflow: "hidden" }}>
-        <div style={{ position: "absolute", inset: 0, width: pct(f.delivered), background: "#9BD2A8" }} />
-        <div style={{ position: "absolute", inset: 0, width: pct(f.read), background: "#1a73e8" }} />
+      <div style={{ fontSize: 13, marginBottom: 7 }}>
+        <b style={{ fontSize: 19, color: "#141414" }}>{r.delivered.toLocaleString()}</b>
+        <span style={{ color: "#9a958c" }}> of {r.total.toLocaleString()} reached</span>
+        {r.delivered > 0 && <span style={{ color: "#9a958c" }}> · {r.deliveryRate}%</span>}
       </div>
-      <div style={{ display: "flex", gap: 16, marginTop: 6, fontSize: 12, color: "#6B6862", flexWrap: "wrap" }}>
-        <span><b style={{ color: "#137333" }}>{f.delivered.toLocaleString()}</b> delivered · {f.deliveryRate}%</span>
-        <span><b style={{ color: "#1a73e8" }}>{f.read.toLocaleString()}</b> read · {f.readRate}% of delivered</span>
-        {f.failed > 0 && <span><b style={{ color: "#b00020" }}>{f.failed.toLocaleString()}</b> failed</span>}
+      <div style={{ display: "flex", height: 9, borderRadius: 6, overflow: "hidden", background: "#EDEBE7" }}>
+        <div style={{ width: w(r.delivered), background: "#137333" }} />
+        <div style={{ width: w(r.pending), background: "#e0a106" }} />
+        <div style={{ width: w(r.failed), background: "#c0341d" }} />
+      </div>
+      <div style={{ display: "flex", gap: 14, marginTop: 7, fontSize: 12, color: "#6B6862", flexWrap: "wrap" }}>
+        <Legend n={r.delivered} label="delivered" color="#137333" />
+        <Legend n={r.read} label="read" color="#1a73e8" />
+        <Legend n={r.pending} label="pending" color="#e0a106" />
+        <Legend n={r.failed} label="failed" color="#c0341d" />
+        <Legend n={r.notSent} label="not sent" color="#b8b2a8" />
       </div>
     </div>
   );
@@ -211,14 +237,6 @@ function DripTracker({ c }: { c: Campaign }) {
       <div style={{ height: 6, borderRadius: 6, background: "#E7EEFB", overflow: "hidden" }}>
         <div style={{ height: "100%", width: `${pct}%`, background: "#1a73e8", transition: "width .6s linear" }} />
       </div>
-    </div>
-  );
-}
-function Metric({ label, value, color }: { label: string; value: number; color?: string }) {
-  return (
-    <div>
-      <div style={{ fontSize: 11, color: "#9a958c" }}>{label}</div>
-      <div style={{ fontSize: 18, fontWeight: 600, color: color || "#141414" }}>{value}</div>
     </div>
   );
 }

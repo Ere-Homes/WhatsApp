@@ -169,9 +169,13 @@ function reach(c: Campaign, f: Funnel | undefined) {
   const read = f?.read || 0;
   const failed = f?.failed || 0;
   const acceptedByWa = f?.sent || 0;          // accepted by WhatsApp, not failed
-  const pending = Math.max(0, acceptedByWa - delivered); // queued/sent/scheduled, no receipt yet
+  const inFlight = Math.max(0, acceptedByWa - delivered); // queued/sent/scheduled, no receipt yet
+  // Split out the genuinely scheduled (future) ones so they read as "scheduled",
+  // not "pending". Capped to in-flight so the segments never overflow.
+  const scheduled = Math.min(inFlight, c.scheduled || 0);
+  const pending = Math.max(0, inFlight - scheduled);
   const notSent = Math.max(0, total - acceptedByWa - failed);
-  return { total, delivered, read, failed, pending, notSent, deliveryRate: f?.deliveryRate || 0 };
+  return { total, delivered, read, failed, scheduled, pending, notSent, deliveryRate: f?.deliveryRate || 0 };
 }
 // Status the user can trust: an old "completed" run that never reached everyone
 // is shown as "Incomplete", so the label matches reality.
@@ -202,12 +206,14 @@ function Coverage({ c, f }: { c: Campaign; f: Funnel | undefined }) {
       </div>
       <div style={{ display: "flex", height: 9, borderRadius: 6, overflow: "hidden", background: "#EDEBE7" }}>
         <div style={{ width: w(r.delivered), background: "#137333" }} />
+        <div style={{ width: w(r.scheduled), background: "#1a73e8" }} />
         <div style={{ width: w(r.pending), background: "#e0a106" }} />
         <div style={{ width: w(r.failed), background: "#c0341d" }} />
       </div>
       <div style={{ display: "flex", gap: 14, marginTop: 7, fontSize: 12, color: "#6B6862", flexWrap: "wrap" }}>
         <Legend n={r.delivered} label="delivered" color="#137333" />
-        <Legend n={r.read} label="read" color="#1a73e8" />
+        <Legend n={r.read} label="read" color="#0b6e2e" />
+        <Legend n={r.scheduled} label="scheduled" color="#1a73e8" />
         <Legend n={r.pending} label="pending" color="#e0a106" />
         <Legend n={r.failed} label="failed" color="#c0341d" />
         <Legend n={r.notSent} label="not sent" color="#b8b2a8" />

@@ -5,7 +5,7 @@ import { CONVOS, SEED_TEMPLATES, type Tpl } from "@/lib/fixtures";
 import { supabaseBrowser } from "@/lib/supabase";
 import { formatPhone } from "@/lib/format";
 
-type UIMsg = { id: string; from: "in" | "out"; t: string; at: string; status?: string | null; media?: string | null };
+type UIMsg = { id: string; from: "in" | "out"; t: string; at: string; status?: string | null; media?: string | null; contentSid?: string | null };
 type UIConv = {
   id: string; name: string; phone: string; waPhone?: string;
   tag: "Hot" | "Warm" | ""; lead?: string; unread: number; time: string; community: string;
@@ -118,7 +118,7 @@ export default function Inbox() {
     if (error) return; // leave loaded:false so it shows "Loading…" and retries
     const msgs: UIMsg[] = (data || []).map((m: any) => ({
       id: m.id, from: m.direction === "out" ? "out" : "in",
-      t: m.body && m.body !== "[media]" ? m.body : "", at: hhmm(m.created_at), status: m.status, media: m.media_url,
+      t: m.body && m.body !== "[media]" ? m.body : "", at: hhmm(m.created_at), status: m.status, media: m.media_url, contentSid: m.content_sid,
     }));
     setConvos((p) => p.map((c) => (c.id === id ? { ...c, loaded: true, messages: msgs } : c)));
   }
@@ -276,17 +276,34 @@ export default function Inbox() {
 
             <div className="thread" ref={threadRef}>
               <div className="day-sep"><span>Today</span></div>
-              {active.messages.map((m) => (
-                <div key={m.id} className={`msg ${m.from}`}>
-                  <div className="msg-bubble">
-                    {m.media && (/\.pdf($|\?)/i.test(m.media)
-                      ? <a href={mediaSrc(m.media)} target="_blank" rel="noreferrer" style={{ color: "var(--wa-blue)", display: "block", marginBottom: 4 }}>Open document ↗</a>
-                      : <img src={mediaSrc(m.media)} alt="" />)}
-                    {m.t}
-                    <span className="msg-time">{m.at} {m.from === "out" && <Ticks status={m.status} />}</span>
+              {active.messages.map((m) => {
+                // Quick-reply / URL / phone buttons come from the template the message
+                // was sent with (matched by content_sid), so the inbox bubble shows the
+                // same tappable buttons the recipient sees on WhatsApp.
+                const tplBtns = m.from === "out" && m.contentSid
+                  ? approved.find((t) => t.sid === m.contentSid)?.buttons
+                  : null;
+                return (
+                  <div key={m.id} className={`msg ${m.from}`}>
+                    <div className="msg-bubble">
+                      {m.media && (/\.pdf($|\?)/i.test(m.media)
+                        ? <a href={mediaSrc(m.media)} target="_blank" rel="noreferrer" style={{ color: "var(--wa-blue)", display: "block", marginBottom: 4 }}>Open document ↗</a>
+                        : <img src={mediaSrc(m.media)} alt="" />)}
+                      {m.t}
+                      <span className="msg-time">{m.at} {m.from === "out" && <Ticks status={m.status} />}</span>
+                      {tplBtns && tplBtns.length > 0 && (
+                        <div style={{ marginTop: 6, borderTop: "1px solid rgba(0,0,0,0.08)", marginLeft: -10, marginRight: -10 }}>
+                          {tplBtns.map((b, bi) => (
+                            <div key={bi} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "8px 12px", borderTop: bi ? "1px solid rgba(0,0,0,0.08)" : "none", color: "var(--wa-blue, #1B7EC2)", fontSize: 14, fontWeight: 500 }}>
+                              <span style={{ fontSize: 13 }}>{b.type === "URL" ? "🔗" : b.type === "PHONE_NUMBER" ? "📞" : "↩︎"}</span>{b.title}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               {active.live && !active.loaded && <div className="empty sm">Loading messages…</div>}
             </div>
 

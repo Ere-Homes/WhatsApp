@@ -21,17 +21,31 @@ export default function CampaignHistory() {
   const [rows, setRows] = useState<Campaign[] | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [funnels, setFunnels] = useState<Record<string, Funnel>>({});
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
+  const [, setTick] = useState(0); // 1s heartbeat so countdowns/progress bars move live
 
   async function load() {
     const { data } = await sb.from("campaigns").select("*").order("created_at", { ascending: false }).limit(100);
     setRows((data as Campaign[]) || []);
   }
-  useEffect(() => {
-    // Reconcile active campaigns' counts from delivery results, then load.
-    fetch("/api/campaign/refresh", { method: "POST" }).catch(() => {}).finally(load);
-    // Pull the Delivered/Read funnel (from WhatsApp receipts) for every campaign.
+  async function refreshAll() {
+    // Reconcile active campaigns' counts from delivery receipts, then reload + funnel.
+    await fetch("/api/campaign/refresh", { method: "POST" }).catch(() => {});
+    await load();
     fetch("/api/campaign/funnel").then((r) => r.json()).then((d) => setFunnels(d.funnel || {})).catch(() => {});
-  }, []); // eslint-disable-line
+    setUpdatedAt(Date.now());
+  }
+  useEffect(() => { refreshAll(); }, []); // eslint-disable-line
+
+  // While any campaign is still sending/scheduled, poll every 20s so the tracker
+  // moves on its own (scheduled -> sent -> delivered) without a manual reload.
+  const hasActive = (rows || []).some((c) => c.status === "sending" || c.status === "scheduled");
+  useEffect(() => {
+    if (!hasActive) return;
+    const poll = setInterval(refreshAll, 20000);
+    const beat = setInterval(() => setTick((t) => t + 1), 1000);
+    return () => { clearInterval(poll); clearInterval(beat); };
+  }, [hasActive]); // eslint-disable-line
 
   async function cancel(c: Campaign) {
     if (!confirm(`Cancel the ${c.scheduled} scheduled message(s) still pending in "${c.name}"? Already-sent messages can't be recalled.`)) return;
@@ -53,9 +67,15 @@ export default function CampaignHistory() {
           <Link href="/campaigns" style={{ fontSize: 13, color: "#6B6862", textDecoration: "none", whiteSpace: "nowrap" }}>+ New campaign</Link>
         </div>
       </div>
-      <p style={{ color: "#6B6862", fontSize: 14, marginTop: 0, marginBottom: 20 }}>
+      <p style={{ color: "#6B6862", fontSize: 14, marginTop: 0, marginBottom: hasActive ? 8 : 20 }}>
         Every bulk send, with delivery results. Scheduled campaigns can be canceled before they go out.
       </p>
+      {hasActive && (
+        <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12, color: "#137333", marginBottom: 18 }}>
+          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#137333", display: "inline-block" }} />
+          Live · auto-updating every 20s{updatedAt ? ` · last ${new Date(updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}` : ""}
+        </div>
+      )}
 
       {rows === null && <div style={{ color: "#6B6862" }}>Loading…</div>}
       {rows && rows.length === 0 && <div style={{ color: "#9a958c", background: "#fff", border: "1px solid #E4E1DB", borderRadius: 12, padding: 24, textAlign: "center" }}>No campaigns yet. <Link href="/campaigns" style={{ color: "#137333" }}>Send your first →</Link></div>}
@@ -84,9 +104,7 @@ export default function CampaignHistory() {
               {c.failed > 0 && <Metric label="Failed" value={c.failed} color="#b00020" />}
             </div>
             <FunnelBar f={funnels[c.id]} sent={c.sent} />
-            {c.finish_at && c.status === "scheduled" && (
-              <div style={{ fontSize: 12, color: "#1a73e8", marginTop: 8 }}>Finishes around {new Date(c.finish_at).toLocaleString()}</div>
-            )}
+            <DripTracker c={c} />
 
             <div style={{ display: "flex", gap: 14, marginTop: 12 }}>
               <button onClick={() => setOpenId(openId === c.id ? null : c.id)} style={linkBtn}>
@@ -157,6 +175,31 @@ function FunnelBar({ f, sent }: { f: Funnel | undefined; sent: number }) {
         <span><b style={{ color: "#137333" }}>{f.delivered.toLocaleString()}</b> delivered · {f.deliveryRate}%</span>
         <span><b style={{ color: "#1a73e8" }}>{f.read.toLocaleString()}</b> read · {f.readRate}% of delivered</span>
         {f.failed > 0 && <span><b style={{ color: "#b00020" }}>{f.failed.toLocaleString()}</b> failed</span>}
+      </div>
+    </div>
+  );
+}
+// Live progress for a time-spread (drip/scheduled) send still in flight: a bar
+// over the send window plus a countdown, so you can watch it finish instead of
+// blindly waiting. Re-renders every second via the page's heartbeat tick.
+function DripTracker({ c }: { c: Campaign }) {
+  if (!(c.status === "scheduled" || c.status === "sending") || !c.finish_at) return null;
+  const start = new Date(c.created_at).getTime();
+  const end = new Date(c.finish_at).getTime();
+  const now = Date.now();
+  const span = Math.max(1, end - start);
+  const pct = Math.max(0, Math.min(100, ((now - start) / span) * 100));
+  const remainMin = Math.max(0, Math.round((end - now) / 60000));
+  const done = now >= end;
+  const remainLabel = remainMin >= 60 ? `~${Math.floor(remainMin / 60)}h ${remainMin % 60}m left` : `~${remainMin} min left`;
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontSize: 12, color: "#1a73e8", marginBottom: 5 }}>
+        <span>{done ? "Finishing up…" : remainLabel}{c.scheduled > 0 ? ` · ${c.scheduled} still scheduled` : ""}</span>
+        <span>finishes {new Date(end).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+      </div>
+      <div style={{ height: 6, borderRadius: 6, background: "#E7EEFB", overflow: "hidden" }}>
+        <div style={{ height: "100%", width: `${pct}%`, background: "#1a73e8", transition: "width .6s linear" }} />
       </div>
     </div>
   );

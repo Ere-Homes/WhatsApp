@@ -275,6 +275,10 @@ a{color:inherit;text-decoration:none;}
 .msg.out .msg-bubble{background:#DCF8C6;border-radius:8px 8px 2px 8px;}
 .msg-bubble img{display:block;max-width:100%;border-radius:6px;margin-bottom:5px;}
 .msg-time{text-align:right;font-size:10px;color:#7d8a90;margin-top:3px;display:flex;align-items:center;justify-content:flex-end;gap:3px;}
+.msg-stack{display:flex;flex-direction:column;max-width:74%;}
+.msg.out .msg-stack{align-items:flex-end;}
+.msg-stack>.msg-bubble{max-width:100%;}
+.msg-stack>.wa-replies{width:100%;max-width:100%;margin-top:4px;}
 .composer-bar{flex-shrink:0;background:var(--surface);border-top:1px solid var(--border);display:flex;align-items:center;gap:10px;padding:11px 16px;padding-bottom:calc(11px + env(safe-area-inset-bottom));position:relative;}
 .msg-input{flex:1;height:40px;padding:0 14px;border:1px solid var(--border-2);border-radius:20px;font-size:13.5px;outline:none;background:var(--surface-2);transition:border-color .14s,box-shadow .14s;min-width:0;}
 .msg-input:focus{border-color:var(--blue);box-shadow:var(--ring);background:#fff;}

@@ -285,17 +285,22 @@ export default function Inbox() {
                   : null;
                 return (
                   <div key={m.id} className={`msg ${m.from}`}>
-                    <div className="msg-bubble">
-                      {m.media && (/\.pdf($|\?)/i.test(m.media)
-                        ? <a href={mediaSrc(m.media)} target="_blank" rel="noreferrer" style={{ color: "var(--wa-blue)", display: "block", marginBottom: 4 }}>Open document ↗</a>
-                        : <img src={mediaSrc(m.media)} alt="" />)}
-                      {m.t}
-                      <span className="msg-time">{m.at} {m.from === "out" && <Ticks status={m.status} />}</span>
+                    <div className="msg-stack">
+                      <div className="msg-bubble">
+                        {m.media && (/\.pdf($|\?)/i.test(m.media)
+                          ? <a href={mediaSrc(m.media)} target="_blank" rel="noreferrer" style={{ color: "var(--wa-blue)", display: "block", marginBottom: 4 }}>Open document ↗</a>
+                          : <img src={mediaSrc(m.media)} alt="" />)}
+                        {m.t}
+                        <span className="msg-time">{m.at} {m.from === "out" && <Ticks status={m.status} />}</span>
+                      </div>
                       {tplBtns && tplBtns.length > 0 && (
-                        <div style={{ marginTop: 6, borderTop: "1px solid rgba(0,0,0,0.08)", marginLeft: -10, marginRight: -10 }}>
+                        <div className="wa-replies">
                           {tplBtns.map((b, bi) => (
-                            <div key={bi} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "8px 12px", borderTop: bi ? "1px solid rgba(0,0,0,0.08)" : "none", color: "var(--wa-blue, #1B7EC2)", fontSize: 14, fontWeight: 500 }}>
-                              <span style={{ fontSize: 13 }}>{b.type === "URL" ? "🔗" : b.type === "PHONE_NUMBER" ? "📞" : "↩︎"}</span>{b.title}
+                            <div key={bi} className="wa-reply">
+                              {b.type === "QUICK_REPLY"
+                                ? <svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z" /></svg>
+                                : <span aria-hidden style={{ fontSize: 12 }}>{b.type === "URL" ? "🔗" : "📞"}</span>}
+                              {b.title}
                             </div>
                           ))}
                         </div>

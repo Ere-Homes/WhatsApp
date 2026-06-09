@@ -5,7 +5,8 @@ import { RATES } from "@/lib/rates";
 import { supabaseBrowser } from "@/lib/supabase";
 import { formatPhone } from "@/lib/format";
 
-type Tpl = { sid: string; name: string; status: string; body: string | null; variables: Record<string, string> };
+type TplButton = { type: string; title: string; url?: string | null; phone?: string | null };
+type Tpl = { sid: string; name: string; status: string; body: string | null; variables: Record<string, string>; media?: string | null; footer?: string | null; buttons?: TplButton[] };
 
 const BATCH = 25;
 // Named CRM segments are saved locally (single-user console - no backend needed).
@@ -199,24 +200,38 @@ export default function Campaigns() {
   const tplVars = tpl ? Object.keys(tpl.variables || {}) : [];
 
   // Structured records from a pasted/uploaded CSV with a header (phone + columns).
-  const pasted = useMemo(() => (source === "manual" ? parsePastedRecords(raw) : null), [raw, source]);
+  // Parse whenever the text has a phone header, regardless of the source toggle:
+  // a plain number list (or a CRM-derived phone list) has no header and parses to
+  // null, so this never clashes - it only kicks in for a real headered CSV.
+  const pasted = useMemo(() => parsePastedRecords(raw), [raw]);
 
-  // Auto-map template variables to the CSV's columns in order ({{1}}->first col after
-  // phone, {{2}}->next, ...) so a pasted list personalizes without manual mapping.
-  useEffect(() => {
-    if (!tpl || source !== "manual" || !pasted?.valueCols.length) return;
-    const fieldIds = new Set(CRM_VAR_FIELDS.map((f) => f.id));
-    setVarMap((prev) => {
-      if (Object.keys(prev).length) return prev; // respect manual choices
-      const next: Record<string, string> = {};
-      tplVars.forEach((k, i) => {
-        const col = pasted.valueCols[i];
-        if (col && fieldIds.has(col)) next[k] = col;
-      });
-      return next;
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tplSid, raw, source]);
+  // Auto-map template variables to a pasted CSV's columns in order ({{1}}->first
+  // column after phone, {{2}}->next, ...) so a headered list personalizes without
+  // manual mapping. Derived, NOT stored via an effect: the old effect could fire
+  // before the template/CSV were ready and never re-run, leaving the map empty so
+  // every send fell back to fixed text (the "Hi there / your Dubai" generic bug).
+  // Here varMap[k] (a manual choice) wins, else the CSV column, else fixed text -
+  // and this same resolver drives BOTH the preview and the send, so what you see is
+  // exactly what goes out.
+  const crmFieldIds = useMemo(() => new Set(CRM_VAR_FIELDS.map((f) => f.id)), []);
+  function autoCol(i: number): string {
+    const col = pasted?.valueCols[i];
+    return col && crmFieldIds.has(col) ? col : "";
+  }
+  function effSrc(k: string, i: number): string {
+    return varMap[k] || autoCol(i) || "fixed";
+  }
+
+  // Build a personalized preview from the FIRST recipient (CSV row or CRM record),
+  // using the same resolver as the send. This is what surfaces a mis-mapped
+  // variable: if it reads "Hi {{1}}" or "Hi there" here, it will send that way.
+  const sampleRec = pasted?.records?.[0] || crmRecips[0] || null;
+  const previewVars: Record<string, string> = {};
+  tplVars.forEach((k, i) => {
+    const src = effSrc(k, i);
+    const val = src === "fixed" ? (vars[k] || "") : (recordValue(sampleRec, src) || vars[k] || "");
+    previewVars[k] = val || `{{${k}}}`;
+  });
 
   // Parse phone numbers from pasted text or CSV (first phone-like token per line)
   const numbers = Array.from(
@@ -279,12 +294,12 @@ export default function Campaigns() {
       if (!hasMapping) return { phone: p, vars: undefined };
       const rec = recMap.get(p.replace(/[^0-9]/g, ""));
       const v: Record<string, string> = {};
-      for (const k of tplVars) {
-        const src = varMap[k] || "fixed";
+      tplVars.forEach((k, i) => {
+        const src = effSrc(k, i);
         const val = clean(src === "fixed" ? (vars[k] || "") : (recordValue(rec, src) || vars[k] || ""));
         if (!val) blanks++;
         v[k] = val;
-      }
+      });
       return { phone: p, vars: v };
     });
 
@@ -351,7 +366,7 @@ export default function Campaigns() {
             : ` · ${ed.notInCrm} not in CRM (Sheet not configured).`;
         }
       } catch { /* ignore - export is best-effort */ }
-      setDoneMsg(`Sent ${sent}${sch} · skipped ${skipped} (blacklisted) · failed ${failed}.${tail}${uncrmNote} See it in the campaign log.`);
+      setDoneMsg(`Queued ${sent}${sch} to Twilio · skipped ${skipped} (blacklisted) · failed ${failed}.${tail}${uncrmNote} Twilio is delivering now - real delivered/read rates are in Insights.`);
     } catch (e: any) {
       setErr(e.message);
     } finally {
@@ -399,12 +414,33 @@ export default function Campaigns() {
           <option value="">Select an approved template…</option>
           {tpls.map((t) => <option key={t.sid} value={t.sid}>{t.name}</option>)}
         </select>
-        {tpl?.body && <div style={{ marginTop: 10, padding: 12, background: "#F5F5F5", borderRadius: 8, fontSize: 14, whiteSpace: "pre-wrap" }}>{renderLabel(tpl, vars)}</div>}
+        {tpl && (tpl.body || tpl.media || (tpl.buttons?.length ?? 0) > 0) && (
+          <div style={{ marginTop: 10, maxWidth: 360 }}>
+            <div style={{ fontSize: 12, color: "#6B6862", marginBottom: 6 }}>Preview{sampleRec ? " (first recipient)" : ""}</div>
+            <div style={{ background: "#fff", border: "1px solid #E4E1DB", borderRadius: 10, overflow: "hidden", boxShadow: "0 1px 2px rgba(0,0,0,0.06)" }}>
+              {tpl.media && <img src={tpl.media} alt="" style={{ display: "block", width: "100%", maxHeight: 188, objectFit: "cover" }} />}
+              {tpl.body && <div style={{ padding: "10px 12px 4px", fontSize: 14, whiteSpace: "pre-wrap", lineHeight: 1.4 }}>{renderLabel(tpl, previewVars)}</div>}
+              {tpl.footer && <div style={{ padding: "0 12px 10px", fontSize: 12, color: "#9a958c" }}>{tpl.footer}</div>}
+              {(tpl.buttons?.length ?? 0) > 0 && (
+                <div style={{ borderTop: "1px solid #ECE9E3" }}>
+                  {tpl.buttons!.map((b, bi) => {
+                    const icon = b.type === "URL" ? "🔗" : b.type === "PHONE_NUMBER" ? "📞" : "↩︎";
+                    return (
+                      <div key={bi} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "9px 12px", borderTop: bi ? "1px solid #ECE9E3" : "none", color: "#1B7EC2", fontSize: 14, fontWeight: 500 }}>
+                        <span style={{ fontSize: 13 }}>{icon}</span>{b.title}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
         {tplVars.length > 0 && (
           <div style={{ marginTop: 12 }}>
             <div style={{ fontSize: 13, color: "#6B6862", marginBottom: 4 }}>Fill each variable with fixed text or a CRM field (personalized per recipient).</div>
-            {tplVars.map((k) => {
-              const src = varMap[k] || "fixed";
+            {tplVars.map((k, i) => {
+              const src = effSrc(k, i);
               return (
                 <div key={k} style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
                   <span style={{ fontSize: 13, fontWeight: 600, width: 42, flexShrink: 0 }}>{`{{${k}}}`}</span>
@@ -620,7 +656,7 @@ export default function Campaigns() {
             <div style={{ height: "100%", width: `${(progress.done / progress.total) * 100}%`, background: "#137333" }} />
           </div>
           <div style={{ fontSize: 12, color: "#6B6862", marginTop: 6 }}>
-            {progress.done}/{progress.total} processed · {progress.sent} {mode === "now" ? "sent" : "scheduled"} · {progress.skipped} skipped · {progress.failed} failed
+            {progress.done}/{progress.total} processed · {progress.sent} {mode === "now" ? "queued" : "scheduled"} · {progress.skipped} skipped · {progress.failed} failed
           </div>
         </div>
       )}

@@ -41,14 +41,23 @@ export async function POST(req: NextRequest) {
 
       try {
         const tw = await sendTemplate(e164, contentSid, r.vars || undefined, sendAt || undefined, from || undefined);
+        // Trust Twilio's REAL status. A requested sendAt does not guarantee a
+        // scheduled message: with no Messaging Service configured, Twilio sends
+        // immediately and returns "queued"/"accepted". Never fake "scheduled".
+        const realStatus = tw.status || (sendAt ? "scheduled" : "queued");
         const { data: conv } = await db
           .from("conversations")
           .upsert({ wa_phone: wa, last_body: label || "[template]", last_at: new Date().toISOString() }, { onConflict: "wa_phone" })
           .select()
           .single();
-        await db.from("messages").insert({ conversation: conv!.id, direction: "out", body: label || "[template]", status: tw.status, twilio_sid: tw.sid, campaign: campaignId || null, content_sid: contentSid || null, media_url: templateMedia });
-        await db.from("conversations").update({ last_direction: "out", last_status: tw.status }).eq("id", conv!.id);
-        results.push({ phone: e164, status: sendAt ? "scheduled" : (tw.status || "queued"), sid: tw.sid });
+        const { data: msg } = await db.from("messages").insert({ conversation: conv!.id, direction: "out", body: label || "[template]", status: realStatus, twilio_sid: tw.sid, campaign: campaignId || null, content_sid: contentSid || null, media_url: templateMedia }).select("id").single();
+        await db.from("conversations").update({ last_direction: "out", last_status: realStatus }).eq("id", conv!.id);
+        // Best-effort: stamp the planned send time when Twilio actually scheduled.
+        // Wrapped so a missing scheduled_at column never breaks the send.
+        if (realStatus === "scheduled" && sendAt && msg?.id) {
+          await db.from("messages").update({ scheduled_at: sendAt }).eq("id", msg.id).then(() => {}, () => {});
+        }
+        results.push({ phone: e164, status: realStatus, sid: tw.sid });
       } catch (e: any) {
         results.push({ phone: e164, status: "failed", error: e.message });
       }

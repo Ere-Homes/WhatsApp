@@ -8,10 +8,10 @@ type Campaign = {
   mode: string; total: number; sent: number; scheduled: number; failed: number; skipped: number;
   status: string; finish_at: string | null; created_at: string;
 };
-type Recipient = { status: string | null; created_at: string; conversation: { wa_phone: string; name: string | null } | null };
+type Recipient = { status: string | null; created_at: string; scheduled_at?: string | null; conversation: { wa_phone: string; name: string | null } | null };
 
 const STATUS_COLOR: Record<string, string> = {
-  sending: "#9a6700", scheduled: "#1a73e8", completed: "#137333", canceled: "#6B6862",
+  sending: "#9a6700", scheduled: "#1a73e8", completed: "#137333", canceled: "#6B6862", incomplete: "#c1571f",
 };
 
 type Funnel = { sent: number; delivered: number; read: number; failed: number; deliveryRate: number; readRate: number };
@@ -126,8 +126,10 @@ function Recipients({ campaignId }: { campaignId: string }) {
   const sb = supabaseBrowser();
   const [list, setList] = useState<Recipient[] | null>(null);
   useEffect(() => {
+    // select * so the scheduled_at column (once added) lights up automatically
+    // without 400-ing while it does not exist yet.
     sb.from("messages")
-      .select("status, created_at, conversation(wa_phone, name)")
+      .select("*, conversation(wa_phone, name)")
       .eq("campaign", campaignId)
       .order("created_at", { ascending: false })
       .limit(2000)
@@ -139,14 +141,22 @@ function Recipients({ campaignId }: { campaignId: string }) {
 
   return (
     <div style={{ marginTop: 12, borderTop: "1px solid #F0EEE9", paddingTop: 10, maxHeight: 320, overflowY: "auto" }}>
-      {list.map((r, i) => (
-        <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: "1px solid #F5F5F5", fontSize: 13 }}>
-          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {r.conversation?.name || (r.conversation?.wa_phone ? "+" + r.conversation.wa_phone : "-")}
-          </span>
-          <span style={{ ...statusPill(r.status), flexShrink: 0, marginLeft: 10 }}>{r.status || "-"}</span>
-        </div>
-      ))}
+      {list.map((r, i) => {
+        const isSched = r.status === "scheduled";
+        const when = isSched && r.scheduled_at ? r.scheduled_at : r.created_at;
+        const timeLabel = when ? `${isSched ? "scheduled for" : "sent"} ${new Date(when).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}` : "";
+        return (
+          <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: "1px solid #F5F5F5", fontSize: 13 }}>
+            <div style={{ minWidth: 0, overflow: "hidden" }}>
+              <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {r.conversation?.name || (r.conversation?.wa_phone ? "+" + r.conversation.wa_phone : "-")}
+              </div>
+              {timeLabel && <div style={{ fontSize: 11, color: isSched ? "#1a73e8" : "#9a958c", marginTop: 1 }}>{timeLabel}</div>}
+            </div>
+            <span style={{ ...statusPill(r.status), flexShrink: 0, marginLeft: 10 }}>{r.status || "-"}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }

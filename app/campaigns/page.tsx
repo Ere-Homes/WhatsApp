@@ -330,14 +330,26 @@ export default function Campaigns() {
       const cd = await cr.json();
       if (cr.ok) campaignId = cd.id;
 
+      let batchErrors = 0;
       for (const call of calls) {
-        const res = await fetch("/api/campaign/send", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ recipients: call.batch, contentSid: tplSid, label, sendAt: call.sendAt, from: sender || undefined, campaignId }),
-        });
-        const d = await res.json();
-        if (!res.ok) throw new Error(d.error || "Batch failed");
+        let d: any = {};
+        try {
+          const res = await fetch("/api/campaign/send", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ recipients: call.batch, contentSid: tplSid, label, sendAt: call.sendAt, from: sender || undefined, campaignId }),
+          });
+          d = await res.json();
+          if (!res.ok) throw new Error(d.error || "Batch failed");
+        } catch {
+          // One bad batch must NOT abort the whole send. Count its recipients as
+          // failed and keep going through the rest of the list.
+          batchErrors++;
+          failed += call.batch.length;
+          done += call.batch.length;
+          setProgress({ done, total: recipients.length, sent: sent + scheduled, skipped, failed });
+          continue;
+        }
         for (const r of d.results) {
           done++;
           if (r.status === "skipped_blacklist" || r.status === "skipped_invalid") skipped++;
@@ -347,7 +359,14 @@ export default function Campaigns() {
         }
         setProgress({ done, total: recipients.length, sent: sent + scheduled, skipped, failed });
       }
-      const tail = mode === "drip" ? ` Drip continues until ${drip?.finishLabel}.` : "";
+      // If a spread/scheduled send was requested but nothing actually scheduled,
+      // Twilio sent immediately (no Messaging Service configured). Say so plainly.
+      const schedWanted = mode === "drip" || mode === "later";
+      const schedNote = schedWanted && scheduled === 0
+        ? " Heads up: scheduling is not configured (Twilio Messaging Service SID), so these went out immediately instead of spreading out."
+        : "";
+      const batchNote = batchErrors ? ` ${batchErrors} batch(es) errored and were skipped.` : "";
+      const tail = mode === "drip" && scheduled > 0 ? ` Drip continues until ${drip?.finishLabel}.` : "";
       const sch = scheduled ? `, scheduled ${scheduled}` : "";
       // Compile recipients that aren't in the Audience CRM into the Google Sheet,
       // with where they came from, so they can be added. Best-effort - never
@@ -366,7 +385,7 @@ export default function Campaigns() {
             : ` · ${ed.notInCrm} not in CRM (Sheet not configured).`;
         }
       } catch { /* ignore - export is best-effort */ }
-      setDoneMsg(`Queued ${sent}${sch} to Twilio · skipped ${skipped} (blacklisted) · failed ${failed}.${tail}${uncrmNote} Twilio is delivering now - real delivered/read rates are in Insights.`);
+      setDoneMsg(`Queued ${sent}${sch} to Twilio · skipped ${skipped} (blacklisted) · failed ${failed}.${batchNote}${schedNote}${tail}${uncrmNote} Twilio is delivering now - real delivered/read rates are in Insights.`);
     } catch (e: any) {
       setErr(e.message);
     } finally {
@@ -375,7 +394,7 @@ export default function Campaigns() {
         await fetch("/api/campaign/finalize", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: campaignId, sent, scheduled, failed, skipped }),
+          body: JSON.stringify({ id: campaignId, sent, scheduled, failed, skipped, total: recipients.length }),
         }).catch(() => {});
       }
       setRunning(false);

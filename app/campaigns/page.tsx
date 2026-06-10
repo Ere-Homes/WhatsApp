@@ -81,6 +81,9 @@ export default function Campaigns() {
   const [excludeReached, setExcludeReached] = useState(true); // skip contacts already reached
   const [sentToday, setSentToday] = useState<number | null>(null);
   const [warmup, setWarmup] = useState<typeof WARMUP[number]["id"]>("warming");
+  const [testPhone, setTestPhone] = useState("");
+  const [testStatus, setTestStatus] = useState<string | null>(null);
+  const [sendingTest, setSendingTest] = useState(false);
   const [source, setSource] = useState<"manual" | "crm">("manual");
   const [crmFilters, setCrmFilters] = useState<Record<string, string>>({});
   const [crmLimit, setCrmLimit] = useState(500);
@@ -145,9 +148,10 @@ export default function Campaigns() {
     }
   }
 
-  // Load saved segments once on mount.
+  // Load saved segments + test phone once on mount.
   useEffect(() => {
     try { const s = localStorage.getItem(SEG_KEY); if (s) setSavedSegs(JSON.parse(s)); } catch { /* ignore */ }
+    try { const p = localStorage.getItem("ere_wa_test_phone"); if (p) setTestPhone(p); } catch { /* ignore */ }
   }, []);
   function persistSegs(next: typeof savedSegs) {
     setSavedSegs(next);
@@ -259,6 +263,44 @@ export default function Campaigns() {
     const reader = new FileReader();
     reader.onload = () => setRaw((prev) => (prev ? prev + "\n" : "") + String(reader.result || ""));
     reader.readAsText(f);
+  }
+
+  async function sendTest() {
+    if (!tplSid) return setTestStatus("Pick a template first.");
+    const phone = testPhone.trim();
+    if (!phone) return setTestStatus("Enter your test number.");
+    setSendingTest(true);
+    setTestStatus(null);
+    try {
+      const e164raw = phone.replace(/[^0-9+]/g, "");
+      const e164 = e164raw.startsWith("+") ? e164raw : `+${e164raw}`;
+      // Use the same previewVars the preview shows — exact test of personalization.
+      // If any var is still an unfilled placeholder ({{k}}), omit ContentVariables
+      // entirely so Twilio falls back to the template's own sample values instead
+      // of sending a blank string that triggers error 63024.
+      const hasRealVars = tplVars.length > 0 && tplVars.every((k) => previewVars[k] && !previewVars[k].startsWith("{{"));
+      const vars = hasRealVars ? previewVars : undefined;
+      const body = renderLabel(tpl, previewVars);
+      const res = await fetch("/api/campaign/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          recipients: [{ phone: e164, vars, body }],
+          contentSid: tplSid,
+          label: body,
+          from: sender || undefined,
+        }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Send failed");
+      const r = d.results?.[0];
+      if (r?.status === "failed") throw new Error(r.error || "Twilio rejected — check the variable values");
+      setTestStatus("Sent! Check your WhatsApp.");
+    } catch (e: any) {
+      setTestStatus(`Failed: ${e.message}`);
+    } finally {
+      setSendingTest(false);
+    }
   }
 
   async function run() {
@@ -500,6 +542,38 @@ export default function Campaigns() {
               <div style={{ fontSize: 12, color: "#2e7d32", marginTop: 6 }}>Personalizing from your CSV columns: {pasted.valueCols.join(", ")}.</div>
             ) : Object.values(varMap).some((v) => v !== "fixed") && source !== "crm" && (
               <div style={{ fontSize: 12, color: "#9a6700", marginTop: 6 }}>CRM fields only fill for recipients loaded from a CRM segment. A plain pasted number list uses the fallback text. Include a header row (phone,first_name,community) to personalize from a CSV.</div>
+            )}
+          </div>
+        )}
+
+        {tpl && (
+          <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid #E4E1DB" }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "#6B6862", marginBottom: 8, letterSpacing: 0.2 }}>SEND TEST</div>
+            <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
+              <div style={{ flex: 1, minWidth: 180 }}>
+                <div style={{ fontSize: 12, color: "#6B6862", marginBottom: 4 }}>Your number (saved)</div>
+                <input
+                  value={testPhone}
+                  onChange={(e) => { setTestPhone(e.target.value); try { localStorage.setItem("ere_wa_test_phone", e.target.value); } catch {} }}
+                  placeholder="+971XXXXXXXXX"
+                  style={{ ...input, marginBottom: 0 }}
+                />
+              </div>
+              <button
+                onClick={sendTest}
+                disabled={sendingTest || !testPhone.trim()}
+                style={{ ...pill, padding: "10px 16px", whiteSpace: "nowrap", opacity: sendingTest || !testPhone.trim() ? 0.5 : 1 }}
+              >
+                {sendingTest ? "Sending…" : "Send test to me →"}
+              </button>
+            </div>
+            <div style={{ fontSize: 12, color: "#6B6862", marginTop: 5 }}>
+              Sends the template with the variable values shown in the preview above. Bypasses daily cap and opt-in checks.
+            </div>
+            {testStatus && (
+              <div style={{ fontSize: 13, marginTop: 6, color: testStatus.startsWith("Sent") ? "#137333" : "#b00020" }}>
+                {testStatus}
+              </div>
             )}
           </div>
         )}

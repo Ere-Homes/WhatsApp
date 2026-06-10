@@ -111,11 +111,32 @@ function phoneVariants(wa: string): string[] {
   return Array.from(set);
 }
 
+// The subscriber's last 9 digits — a format-proof key. "+971 50 123 4567",
+// "0501234567", "971501234567" and ".0501234567" all reduce to "501234567",
+// so this catches every separator/prefix variant AND lets us match the
+// secondary phone2 field, which exact-variant matching never could.
+function lastNine(wa: string): string {
+  return (wa || "").replace(/[^0-9]/g, "").slice(-9);
+}
+
 export async function crmContactByPhone(wa: string) {
+  // Preferred path: match the indexed, normalized last-9-digit keys on BOTH
+  // phone fields. Requires the phone_norm / phone2_norm generated columns +
+  // indexes (see docs/crm-phone-norm.sql). If they don't exist yet the query
+  // 400s instantly and we fall back to the legacy variant match — no regression.
+  const key = lastNine(wa);
+  if (key.length === 9) {
+    try {
+      const rows = await crmGet(`contacts?or=(phone_norm.eq.${key},phone2_norm.eq.${key})&select=${CRM_CONTACT_COLS}&limit=1`);
+      // Columns exist: trust the result (a miss here is a genuine "not in CRM").
+      return (rows && rows[0]) || null;
+    } catch { /* columns not created yet — fall through to legacy match */ }
+  }
+
+  // Legacy fallback: exact-match hand-built format variants on the indexed
+  // `phone` column only (phone2 excluded — unindexed full scan would time out).
   const variants = phoneVariants(wa);
   if (!variants.length) return null;
-  // Only the `phone` column is indexed - querying `phone2` too (via OR) forces a
-  // full-table scan on 9.48M rows and times out, so we match on `phone` only.
   const inList = variants.map((v) => `"${v}"`).join(",");
   const rows = await crmGet(`contacts?phone=in.(${inList})&select=${CRM_CONTACT_COLS}&limit=1`);
   return (rows && rows[0]) || null;

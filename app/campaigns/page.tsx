@@ -52,14 +52,55 @@ function parsePastedRecords(raw: string): { records: any[]; valueCols: string[] 
   }
   return records.length ? { records, valueCols } : null;
 }
-// Warm-up profiles. A brand-new WhatsApp sender shouldn't blast its full tier
-// on day one - Meta ramps you (250 -> 1K -> 10K -> 100K) only while quality
-// stays high. Each profile sets a safe 24h cap and a recommended drip pace.
+// Warm-up profiles. Meta ramps a sender 250 -> 1K -> 2K -> 10K -> 100K only
+// while quality stays high. Each profile sets a safe 24h cap and a drip pace.
 const WARMUP = [
   { id: "new", label: "Brand-new", sub: "first few days", cap: 50, batch: 25, interval: 180 },
   { id: "warming", label: "Warming up", sub: "week 1-2", cap: 250, batch: 50, interval: 120 },
-  { id: "established", label: "Established", sub: "good quality rating", cap: 1000, batch: 100, interval: 60 },
+  { id: "established", label: "Established", sub: "1,000/day tier", cap: 1000, batch: 100, interval: 60 },
+  { id: "scaled", label: "Scaled", sub: "2,000/day tier", cap: 2000, batch: 100, interval: 60 },
 ] as const;
+
+// Drip pace presets, shown as descriptive cards.
+const DRIP_PACES = [
+  { id: "gentle", label: "Gentle", batch: 25, interval: 30, sub: "25 every 30 min · safest for a young number" },
+  { id: "standard", label: "Standard", batch: 50, interval: 60, sub: "50 every hour · balanced" },
+  { id: "fast", label: "Fast", batch: 100, interval: 60, sub: "100 every hour · quickest, safe at the 2,000/day tier" },
+] as const;
+
+// Daytime send window: 9:00–20:00 Dubai (GMT+4) = 05:00–16:00 UTC. Owners
+// shouldn't get a property message at 2am — it kills replies and looks like spam.
+function nextDaytimeUTC(d: Date): Date {
+  const x = new Date(d.getTime());
+  const h = x.getUTCHours();
+  if (h >= 5 && h < 16) return x;       // already inside the window
+  if (h >= 16) x.setUTCDate(x.getUTCDate() + 1); // after window -> tomorrow morning
+  x.setUTCHours(5, 0, 0, 0);            // 05:00 UTC = 09:00 Dubai
+  return x;
+}
+// One source of truth for drip batch times, shared by the preview summary and
+// the actual send (buildPlan). Returns one entry per chunk: null = send now,
+// otherwise the scheduled Date. When daytime is on, batches that would land
+// overnight are pushed to the next morning and the drip resumes from there.
+function planDripTimes(count: number, perBatch: number, intervalMin: number, daytime: boolean): (Date | null)[] {
+  const chunks = Math.max(1, Math.ceil(count / Math.max(perBatch, 1)));
+  const now = new Date();
+  const out: (Date | null)[] = [];
+  let cursor = now;
+  for (let c = 0; c < chunks; c++) {
+    if (c === 0) {
+      const t = daytime ? nextDaytimeUTC(now) : now;
+      cursor = t;
+      out.push(t.getTime() <= now.getTime() + 1000 ? null : t); // within window -> immediate
+    } else {
+      let t = new Date(cursor.getTime() + intervalMin * 60000);
+      if (daytime) t = nextDaytimeUTC(t);
+      cursor = t;
+      out.push(t);
+    }
+  }
+  return out;
+}
 
 export default function Campaigns() {
   const [tpls, setTpls] = useState<Tpl[]>([]);
@@ -72,6 +113,7 @@ export default function Campaigns() {
   const [sendAt, setSendAt] = useState(""); // for "later"
   const [perBatch, setPerBatch] = useState(50); // drip: recipients per batch
   const [intervalMin, setIntervalMin] = useState(120); // drip: minutes between batches
+  const [daytimeOnly, setDaytimeOnly] = useState(true); // drip: pause overnight, send 9am-8pm Dubai
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number; sent: number; skipped: number; failed: number } | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -251,11 +293,18 @@ export default function Campaigns() {
 
   const estUsd = numbers.length * RATES.twilioPerMessage;
 
-  // Drip plan summary (batches every interval; first batch now)
-  const dripChunks = Math.ceil(numbers.length / Math.max(perBatch, 1));
-  const dripDurationMin = Math.max(0, dripChunks - 1) * intervalMin;
+  // Drip plan summary, daytime-aware. Computed from the same planDripTimes() the
+  // real send uses, so the "finishes at" the user sees is exactly what happens.
+  const dripTimes = numbers.length ? planDripTimes(numbers.length, perBatch, intervalMin, daytimeOnly) : [];
+  const dripLast = dripTimes.length ? dripTimes[dripTimes.length - 1] : null;
+  const dripFinishMs = dripLast ? dripLast.getTime() : Date.now();
   const drip = numbers.length
-    ? { chunks: dripChunks, fits: dripDurationMin <= 7 * 24 * 60, finishLabel: new Date(Date.now() + dripDurationMin * 60000).toLocaleString() }
+    ? {
+        chunks: dripTimes.length,
+        fits: dripFinishMs - Date.now() <= 7 * 24 * 60 * 60 * 1000, // Twilio's 7-day schedule limit
+        finishLabel: new Date(dripFinishMs).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit", month: "short", day: "numeric" }),
+        spansDays: dripTimes.some((t) => t && t.getTime() - Date.now() > 14 * 60 * 60 * 1000),
+      }
     : null;
 
   function onFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -393,7 +442,7 @@ export default function Campaigns() {
     const label = renderLabel(tpl, vars);
     const finishAtIso =
       mode === "later" ? new Date(sendAt).toISOString()
-      : mode === "drip" ? new Date(Date.now() + dripDurationMin * 60000).toISOString()
+      : mode === "drip" ? new Date(dripFinishMs).toISOString()
       : null;
 
     setRunning(true);
@@ -488,11 +537,13 @@ export default function Campaigns() {
     if (mode === "now") push(recipients);
     else if (mode === "later") push(recipients, new Date(sendAt).toISOString());
     else {
-      // drip: chunk of perBatch every intervalMin; first chunk goes now
+      // drip: chunk of perBatch per the daytime-aware schedule. Recomputed fresh
+      // at send time so the times are accurate to the moment Send is pressed.
+      const times = planDripTimes(recipients.length, perBatch, intervalMin, daytimeOnly);
       for (let c = 0, i = 0; i < recipients.length; c++, i += perBatch) {
         const chunk = recipients.slice(i, i + perBatch);
-        const sendAt = c === 0 ? undefined : new Date(Date.now() + c * intervalMin * 60000).toISOString();
-        push(chunk, sendAt);
+        const t = times[c];
+        push(chunk, t ? t.toISOString() : undefined);
       }
     }
     return calls;
@@ -722,41 +773,78 @@ export default function Campaigns() {
 
         <div className="sect">
           <div className="sect-t">4 · When to send</div>
-          <div className="seg">
-            {([["now", "Send now"], ["later", "Send later"], ["drip", "Spread it out"]] as const).map(([m, lbl]) => (
-              <button key={m} onClick={() => setMode(m)} className={mode === m ? "on" : ""}>{lbl}</button>
+
+          {/* Mode as descriptive cards, not bare toggles */}
+          <div style={{ display: "grid", gap: 8 }}>
+            {([
+              { m: "now", t: "Send now", s: "Everyone at once, right away" },
+              { m: "drip", t: "Spread it out", s: "Small batches over the day · safest for your number" },
+              { m: "later", t: "Send later", s: "Pick a date & time" },
+            ] as const).map(({ m, t, s }) => (
+              <div key={m} onClick={() => setMode(m)} className={`pick${mode === m ? " on" : ""}`} style={{ marginBottom: 0 }}>
+                <div className="pk-radio" />
+                <div className="pk-main">
+                  <div className="pk-t">{t}{m === "drip" && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, color: "var(--green-ink)", background: "var(--green-bg)", border: "1px solid var(--green-border)", borderRadius: 20, padding: "1px 8px", verticalAlign: "middle" }}>Recommended</span>}</div>
+                  <div className="pk-s">{s}</div>
+                </div>
+              </div>
             ))}
           </div>
 
           {mode === "later" && (
-            <div style={{ marginTop: 12 }}>
+            <div style={{ marginTop: 14 }}>
               <input type="datetime-local" value={sendAt} onChange={(e) => setSendAt(e.target.value)} className="input" style={{ maxWidth: 280 }} />
               <div className="hint">Anytime from 15 minutes to 7 days from now.</div>
             </div>
           )}
 
           {mode === "drip" && (
-            <div style={{ marginTop: 12 }}>
-              <div className="hint" style={{ marginTop: 0, marginBottom: 8 }}>Send a small batch, wait, repeat - the gentle way to protect your number. Pick a pace:</div>
-              <div className="seg" style={{ marginBottom: 10, flexWrap: "wrap" }}>
-                {[{ p: 50, m: 120, l: "50 every 2 hours" }, { p: 100, m: 60, l: "100 every hour" }, { p: 25, m: 30, l: "25 every 30 min" }].map((x) => (
-                  <button key={x.l} onClick={() => { setPerBatch(x.p); setIntervalMin(x.m); }} className={perBatch === x.p && intervalMin === x.m ? "on" : ""}>{x.l}</button>
+            <div style={{ marginTop: 14 }}>
+              <div className="label" style={{ marginBottom: 8 }}>Pace</div>
+              <div style={{ display: "grid", gap: 8 }}>
+                {DRIP_PACES.map((x) => (
+                  <div key={x.id} onClick={() => { setPerBatch(x.batch); setIntervalMin(x.interval); }} className={`pick${perBatch === x.batch && intervalMin === x.interval ? " on" : ""}`} style={{ marginBottom: 0 }}>
+                    <div className="pk-radio" />
+                    <div className="pk-main">
+                      <div className="pk-t">{x.label}</div>
+                      <div className="pk-s">{x.sub}</div>
+                    </div>
+                  </div>
                 ))}
               </div>
-              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", fontSize: 14 }}>
-                <span style={{ color: "var(--ink-2)" }}>Send</span>
-                <input type="number" value={perBatch} min={1} max={250} onChange={(e) => setPerBatch(parseInt(e.target.value || "50", 10))} className="input" style={{ width: 80 }} />
-                <span style={{ color: "var(--ink-2)" }}>recipients every</span>
-                <select value={intervalMin} onChange={(e) => setIntervalMin(parseInt(e.target.value, 10))} className="input" style={{ width: 130 }}>
-                  {[30, 60, 120, 180, 240, 360, 720, 1440].map((m) => <option key={m} value={m}>{humanInterval(m)}</option>)}
-                </select>
-              </div>
-              {drip && (
-                drip.fits
-                  ? <div className="ok-box">{`${numbers.length} recipients in ${drip.chunks} batch${drip.chunks === 1 ? "" : "es"} - first batch now, finishes around ${drip.finishLabel}.`}</div>
-                  : <div className="err-box">Too slow for this list - it would take over 7 days (Twilio's limit). Use a bigger batch or shorter interval.</div>
-              )}
+
+              <label className="checkrow" style={{ marginTop: 12 }}>
+                <input type="checkbox" checked={daytimeOnly} onChange={(e) => setDaytimeOnly(e.target.checked)} />
+                <span>Only send <b>9am–8pm Dubai</b> — pause overnight, resume next morning. (Better replies, protects quality.)</span>
+              </label>
+
+              <details style={{ marginTop: 12 }}>
+                <summary style={{ fontSize: 12.5, color: "var(--ink-3)", cursor: "pointer", userSelect: "none" }}>Custom pace</summary>
+                <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", fontSize: 14, marginTop: 10 }}>
+                  <span style={{ color: "var(--ink-2)" }}>Send</span>
+                  <input type="number" value={perBatch} min={1} max={250} onChange={(e) => setPerBatch(parseInt(e.target.value || "50", 10))} className="input" style={{ width: 80 }} />
+                  <span style={{ color: "var(--ink-2)" }}>recipients every</span>
+                  <select value={intervalMin} onChange={(e) => setIntervalMin(parseInt(e.target.value, 10))} className="input" style={{ width: 130 }}>
+                    {[30, 60, 120, 180, 240, 360, 720, 1440].map((m) => <option key={m} value={m}>{humanInterval(m)}</option>)}
+                  </select>
+                </div>
+              </details>
             </div>
+          )}
+
+          {/* Live result line — the single source of truth for what will happen */}
+          {drip && mode === "drip" && (
+            drip.fits ? (
+              <div className="ok-box" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontWeight: 700 }}>→</span>
+                <span>
+                  <b>{numbers.length}</b> recipient{numbers.length === 1 ? "" : "s"} · {drip.chunks} batch{drip.chunks === 1 ? "" : "es"}
+                  {daytimeOnly && " · daytime only"} · finishes <b>{drip.finishLabel}</b>
+                </span>
+              </div>
+            ) : (
+              <div className="err-box">Too slow for this list — it would take over 7 days (Twilio's limit). Pick a faster pace{daytimeOnly ? ", or turn off daytime-only" : ""}.</div>
+            )
           )}
         </div>
 

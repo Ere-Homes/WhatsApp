@@ -9,6 +9,11 @@ type Perf = { name: string; sent: number; replyRate: number };
 type Kpis = { conversations: number | null; response: number | null; campaigns: number | null; leads: number | null };
 const dash = (n: number | null) => (n === null ? "—" : n);
 
+// datetime-local <-> Date helpers (local time, minute precision), matching Insights.
+const pad = (n: number) => String(n).padStart(2, "0");
+const toInput = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+const QUICK: [string, number][] = [["24h", 24], ["7d", 168], ["30d", 720], ["90d", 2160]];
+
 function TagDot({ tag }: { tag: string }) {
   if (!tag) return null;
   const c = tag === "Hot" ? "var(--red)" : "var(--amber-dot)";
@@ -35,41 +40,32 @@ export default function Dashboard() {
   const [recent, setRecent] = useState<Recent[] | null>(null);
   const [perf, setPerf] = useState<Perf[] | null>(null);
 
-  // Hydrate KPIs and the recent list from the live backend.
+  // Date range that drives the KPI bar. Default window: last 24 hours.
+  const [to, setTo] = useState(() => toInput(new Date()));
+  const [from, setFrom] = useState(() => toInput(new Date(Date.now() - 24 * 3600000)));
+  const setQuick = (hours: number) => { const n = new Date(); setTo(toInput(n)); setFrom(toInput(new Date(n.getTime() - hours * 3600000))); };
+  const hrs = Math.max(1, Math.round((new Date(to).getTime() - new Date(from).getTime()) / 3600000));
+  const spanLabel = hrs <= 48 ? `${hrs}h` : `${Math.round(hrs / 24)}d`;
+
+  // Range-independent data: recent conversations, active campaigns, template
+  // performance. These are "latest" / live-status / 90d by nature, so the date
+  // range doesn't apply — load them once on mount.
   useEffect(() => {
     (async () => {
       const sb = supabaseBrowser();
-      const weekAgoISO = new Date(Date.now() - 7 * 86400000).toISOString();
-      const [insR, convR, campR, repliedR, hotR] = await Promise.allSettled([
-        fetch("/api/insights?days=1").then((r) => r.json()),
+      const [convR, campR] = await Promise.allSettled([
         sb.from("conversations").select("*").order("last_at", { ascending: false }).limit(50),
         sb.from("campaigns").select("id,status").in("status", ["sending", "scheduled"]),
-        // New leads = people who actually replied (inbound) in the last 7 days...
-        sb.from("messages").select("conversation").eq("direction", "in").gte("created_at", weekAgoISO),
-        // ...and are tagged Hot/Warm. The intersection = "replied positively this week".
-        sb.from("conversations").select("id,lead_status").in("lead_status", ["hot", "warm"]),
       ]);
 
-      const next = { ...kpis };
       let convs: any[] = [];
       if (convR.status === "fulfilled" && (convR.value as any).data?.length) {
         convs = (convR.value as any).data;
-        next.conversations = convs.length;
       }
-      // New leads this week: Hot/Warm contacts who actually replied (inbound) in the
-      // last 7 days. A tag alone isn't enough — they must have written back. Always
-      // assign (even 0) so a stale seed value can't linger.
-      if (repliedR.status === "fulfilled" && hotR.status === "fulfilled") {
-        const repliedIds = new Set(((repliedR.value as any).data || []).map((m: any) => m.conversation));
-        next.leads = ((hotR.value as any).data || []).filter((c: any) => repliedIds.has(c.id)).length;
-      }
-      if (insR.status === "fulfilled" && insR.value?.totals) {
-        const t = insR.value.totals;
-        if (typeof t.readRate === "number" && t.outbound) next.response = t.readRate;
-        if (typeof t.outbound === "number" && t.outbound + t.inbound > 0) next.conversations = t.outbound + t.inbound;
-      }
-      if (campR.status === "fulfilled" && (campR.value as any).data) next.campaigns = (campR.value as any).data.length;
-      setKpis(next);
+      setKpis((k) => ({
+        ...k,
+        campaigns: campR.status === "fulfilled" && (campR.value as any).data ? (campR.value as any).data.length : k.campaigns,
+      }));
 
       const tagOf = (s?: string) => (s || "").toLowerCase() === "hot" ? "Hot" : (s || "").toLowerCase() === "warm" ? "Warm" : "";
       setRecent(convs.slice(0, 5).map((c) => ({
@@ -97,21 +93,62 @@ export default function Dashboard() {
           .map((x) => ({ name: x.name, sent: x.s.sent, replyRate: x.s.replyRate })),
       );
     }).catch(() => setPerf([]));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Range-driven KPIs: conversations + response rate (Twilio insights) and new
+  // leads (Hot/Warm contacts who actually replied inbound in the window).
+  useEffect(() => {
+    (async () => {
+      const sb = supabaseBrowser();
+      const fromISO = new Date(from).toISOString();
+      const toISO = new Date(to).toISOString();
+      const qs = `from=${encodeURIComponent(fromISO)}&to=${encodeURIComponent(toISO)}`;
+      const [insR, repliedR, hotR] = await Promise.allSettled([
+        fetch(`/api/insights?${qs}`).then((r) => r.json()),
+        // New leads = people who actually replied (inbound) inside the window...
+        sb.from("messages").select("conversation").eq("direction", "in").gte("created_at", fromISO).lte("created_at", toISO),
+        // ...and are tagged Hot/Warm. The intersection = "replied positively in range".
+        sb.from("conversations").select("id,lead_status").in("lead_status", ["hot", "warm"]),
+      ]);
+
+      setKpis((k) => {
+        const next = { ...k };
+        if (insR.status === "fulfilled" && insR.value?.totals) {
+          const t = insR.value.totals;
+          next.response = typeof t.readRate === "number" && t.outbound ? t.readRate : (t.outbound + t.inbound > 0 ? 0 : null);
+          next.conversations = typeof t.outbound === "number" ? t.outbound + t.inbound : next.conversations;
+        }
+        // Always assign (even 0) so a stale value from a wider window can't linger.
+        if (repliedR.status === "fulfilled" && hotR.status === "fulfilled") {
+          const repliedIds = new Set(((repliedR.value as any).data || []).map((m: any) => m.conversation));
+          next.leads = ((hotR.value as any).data || []).filter((c: any) => repliedIds.has(c.id)).length;
+        }
+        return next;
+      });
+    })().catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [from, to]);
 
   return (
     <div className="page"><div className="maxw">
       <PageHead title="Overview" sub="Your WhatsApp channel at a glance.">
+        <div className="seg">
+          {QUICK.map(([id, h]) => (
+            <button key={id} className={spanLabel === id ? "on" : ""} onClick={() => setQuick(h)}>{id}</button>
+          ))}
+        </div>
+        <input type="datetime-local" className="input" style={{ width: 178, marginBottom: 0 }} value={from} max={to} onChange={(e) => setFrom(e.target.value)} title="From" />
+        <span style={{ color: "var(--ink-3)" }}>→</span>
+        <input type="datetime-local" className="input" style={{ width: 178, marginBottom: 0 }} value={to} min={from} onChange={(e) => setTo(e.target.value)} title="To" />
         <button className="btn btn-sec" onClick={() => go("/templates")}><Icon d={IC.tmpl} s={15} />Templates</button>
         <button className="btn btn-primary" onClick={() => go("/inbox")}><Icon d={IC.inbox} s={15} />Open inbox</button>
       </PageHead>
 
       <div className="kpis k4">
-        <div className="kpi"><div className="kl">Conversations today</div><div className="kv">{dash(kpis.conversations)}</div></div>
-        <div className="kpi"><div className="kl">Response rate</div><div className="kv">{kpis.response === null ? "—" : `${kpis.response}%`}</div></div>
-        <div className="kpi"><div className="kl">Active campaigns</div><div className="kv">{dash(kpis.campaigns)}</div></div>
-        <div className="kpi"><div className="kl">New leads this week</div><div className="kv">{dash(kpis.leads)}</div></div>
+        <div className="kpi"><div className="kl">Conversations</div><div className="kv">{dash(kpis.conversations)}</div><div className="ks">last {spanLabel}</div></div>
+        <div className="kpi"><div className="kl">Response rate</div><div className="kv">{kpis.response === null ? "—" : `${kpis.response}%`}</div><div className="ks">last {spanLabel}</div></div>
+        <div className="kpi"><div className="kl">Active campaigns</div><div className="kv">{dash(kpis.campaigns)}</div><div className="ks">live now</div></div>
+        <div className="kpi"><div className="kl">New leads</div><div className="kv">{dash(kpis.leads)}</div><div className="ks">last {spanLabel}</div></div>
       </div>
 
       <div className="grid-2">

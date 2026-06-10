@@ -45,12 +45,15 @@ export async function POST(req: NextRequest) {
         // scheduled message: with no Messaging Service configured, Twilio sends
         // immediately and returns "queued"/"accepted". Never fake "scheduled".
         const realStatus = tw.status || (sendAt ? "scheduled" : "queued");
+        // Prefer the per-recipient rendered body so the inbox shows what THIS
+        // contact actually received ("Hi Igor"), not a shared generic label.
+        const body = r.body || label || "[template]";
         const { data: conv } = await db
           .from("conversations")
-          .upsert({ wa_phone: wa, last_body: label || "[template]", last_at: new Date().toISOString() }, { onConflict: "wa_phone" })
+          .upsert({ wa_phone: wa, last_body: body, last_at: new Date().toISOString() }, { onConflict: "wa_phone" })
           .select()
           .single();
-        const { data: msg } = await db.from("messages").insert({ conversation: conv!.id, direction: "out", body: label || "[template]", status: realStatus, twilio_sid: tw.sid, campaign: campaignId || null, content_sid: contentSid || null, media_url: templateMedia }).select("id").single();
+        const { data: msg } = await db.from("messages").insert({ conversation: conv!.id, direction: "out", body, status: realStatus, twilio_sid: tw.sid, campaign: campaignId || null, content_sid: contentSid || null, media_url: templateMedia }).select("id").single();
         await db.from("conversations").update({ last_direction: "out", last_status: realStatus }).eq("id", conv!.id);
         // Best-effort: stamp the planned send time when Twilio actually scheduled.
         // Wrapped so a missing scheduled_at column never breaks the send.

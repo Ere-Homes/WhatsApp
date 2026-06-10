@@ -314,7 +314,9 @@ export default function Campaigns() {
     const hasMapping = tplVars.length > 0;
     let blanks = 0;
     const recipients = sendNumbers.map((p) => {
-      if (!hasMapping) return { phone: p, vars: undefined };
+      // body = the message rendered with THIS recipient's variables, so the inbox
+      // shows what they actually received ("Hi Igor"), not a shared generic label.
+      if (!hasMapping) return { phone: p, vars: undefined, body: renderLabel(tpl, vars) };
       const rec = recMap.get(p.replace(/[^0-9]/g, ""));
       const v: Record<string, string> = {};
       tplVars.forEach((k, i) => {
@@ -323,7 +325,7 @@ export default function Campaigns() {
         if (!val) blanks++;
         v[k] = val;
       });
-      return { phone: p, vars: v };
+      return { phone: p, vars: v, body: renderLabel(tpl, v) };
     });
 
     // Empty variables are the #1 cause of 63024 — warn before sending.

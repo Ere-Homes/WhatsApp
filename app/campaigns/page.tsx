@@ -294,8 +294,11 @@ export default function Campaigns() {
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "Send failed");
       const r = d.results?.[0];
-      if (r?.status === "failed") throw new Error(r.error || "Twilio rejected — check the variable values");
-      setTestStatus("Sent! Check your WhatsApp.");
+      if (!r) throw new Error("No result returned from send route");
+      if (r.status === "failed") throw new Error(r.error || "Twilio rejected — check variable values");
+      if (r.status === "skipped_invalid") throw new Error("Your number is flagged as invalid in the DB — go to the inbox, open your conversation and clear the invalid status, then retry");
+      if (r.status === "skipped_blacklist") throw new Error("Your number is blocked (opted out) in the DB");
+      setTestStatus(`Sent (${r.status}) · check your WhatsApp. SID: ${r.sid || "—"}`);
     } catch (e: any) {
       setTestStatus(`Failed: ${e.message}`);
     } finally {

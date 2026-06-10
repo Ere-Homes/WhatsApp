@@ -12,6 +12,7 @@ const NAV = [
   { id: "Inbox", href: "/inbox", icon: IC.inbox },
   { id: "Templates", href: "/templates", icon: IC.tmpl },
   { id: "Campaigns", href: "/campaigns", icon: IC.camp },
+  { id: "Automation", href: "/automation", icon: IC.bolt },
   { id: "Insights", href: "/insights", icon: IC.insights },
   { id: "Billing", href: "/billing", icon: IC.billing },
 ];

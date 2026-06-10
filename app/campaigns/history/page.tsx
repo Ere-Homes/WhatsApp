@@ -3,15 +3,16 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Icon, IC, PageHead, Skeleton } from "@/lib/ui";
 import { supabaseBrowser } from "@/lib/supabase";
+import { errorCause } from "@/lib/twilioErrors";
 
 type Campaign = {
   id: string; name: string; template_name: string | null; sender: string | null;
   mode: string; total: number; sent: number; scheduled: number; failed: number; skipped: number;
   status: string; finish_at: string | null; created_at: string;
 };
-type Recipient = { status: string | null; created_at: string; scheduled_at?: string | null; conversation: { wa_phone: string; name: string | null } | null };
+type Recipient = { status: string | null; error_code?: string | null; created_at: string; scheduled_at?: string | null; conversation: { wa_phone: string; name: string | null } | null };
 
-type Funnel = { sent: number; delivered: number; read: number; failed: number; deliveryRate: number; readRate: number };
+type Funnel = { sent: number; delivered: number; read: number; failed: number; deliveryRate: number; readRate: number; reasons?: Record<string, number> };
 
 export default function CampaignHistory() {
   const sb = supabaseBrowser();
@@ -100,6 +101,7 @@ export default function CampaignHistory() {
               </div>
 
               <Coverage c={c} f={funnels[c.id]} />
+              <FailureReasons f={funnels[c.id]} />
               <DripTracker c={c} />
 
               <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
@@ -140,15 +142,19 @@ function Recipients({ campaignId }: { campaignId: string }) {
     <div style={{ marginTop: 14, borderTop: "1px solid var(--border-soft)", paddingTop: 6, maxHeight: 320, overflowY: "auto" }}>
       {list.map((r, i) => {
         const isSched = r.status === "scheduled";
+        const isFail = r.status === "failed" || r.status === "undelivered";
         const when = isSched && r.scheduled_at ? r.scheduled_at : r.created_at;
         const timeLabel = when ? `${isSched ? "scheduled for" : "sent"} ${new Date(when).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}` : "";
+        const cause = isFail ? (r.error_code ? `${errorCause(r.error_code)} · ${r.error_code}` : "Failed — no error code reported") : "";
         return (
           <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid var(--border-soft)", fontSize: 13 }}>
             <div style={{ minWidth: 0, overflow: "hidden" }}>
               <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--ink)" }}>
                 {r.conversation?.name || (r.conversation?.wa_phone ? "+" + r.conversation.wa_phone : "-")}
               </div>
-              {timeLabel && <div style={{ fontSize: 11.5, color: isSched ? "var(--blue)" : "var(--ink-3)", marginTop: 1 }}>{timeLabel}</div>}
+              {cause
+                ? <div style={{ fontSize: 11.5, color: "var(--red-ink)", marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cause}</div>
+                : timeLabel && <div style={{ fontSize: 11.5, color: isSched ? "var(--blue)" : "var(--ink-3)", marginTop: 1 }}>{timeLabel}</div>}
             </div>
             <RecipientStatus status={r.status} />
           </div>
@@ -229,6 +235,35 @@ function Coverage({ c, f }: { c: Campaign; f: Funnel | undefined }) {
         <Legend n={r.pending} label="pending" color="var(--amber-dot)" />
         <Legend n={r.failed} label="failed" color="var(--red)" />
         <Legend n={r.notSent} label="not sent" color="var(--border-2)" />
+      </div>
+    </div>
+  );
+}
+// Why did messages fail? Group the campaign's failures by Twilio error code and
+// show them in plain English, worst first — so "40 failed" becomes something you
+// can actually act on (dead numbers vs. opt-in vs. Meta marketing cap).
+function FailureReasons({ f }: { f: Funnel | undefined }) {
+  const reasons = f?.reasons;
+  if (!reasons) return null;
+  const items = Object.entries(reasons)
+    .map(([code, n]) => ({ code, n, cause: code === "unknown" ? "No error code reported by Twilio" : errorCause(code) }))
+    .sort((a, b) => b.n - a.n);
+  if (items.length === 0) return null;
+  return (
+    <div style={{ marginTop: 14, padding: "11px 13px", borderRadius: "var(--r)", background: "var(--red-bg)", border: "1px solid var(--red-border)" }}>
+      <div style={{ fontSize: 11.5, fontWeight: 600, letterSpacing: ".04em", textTransform: "uppercase", color: "var(--red-ink)", marginBottom: 8 }}>
+        Why {items.reduce((s, i) => s + i.n, 0).toLocaleString()} failed
+      </div>
+      <div style={{ display: "grid", gap: 7 }}>
+        {items.map((i) => (
+          <div key={i.code} style={{ display: "flex", alignItems: "baseline", gap: 10, fontSize: 12.5, lineHeight: 1.4 }}>
+            <b style={{ color: "var(--red-ink)", minWidth: 34, flexShrink: 0 }}>{i.n.toLocaleString()}</b>
+            <span style={{ color: "var(--ink-2)", minWidth: 0 }}>
+              {i.cause}
+              {i.code !== "unknown" && <span style={{ color: "var(--ink-3)", marginLeft: 6 }}>· {i.code}</span>}
+            </span>
+          </div>
+        ))}
       </div>
     </div>
   );

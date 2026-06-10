@@ -132,17 +132,20 @@ export default function Dashboard() {
   return (
     <div className="page"><div className="maxw">
       <PageHead title="Overview" sub="Your WhatsApp channel at a glance.">
+        <button className="btn btn-sec" onClick={() => go("/templates")}><Icon d={IC.tmpl} s={15} />Templates</button>
+        <button className="btn btn-primary" onClick={() => go("/inbox")}><Icon d={IC.inbox} s={15} />Open inbox</button>
+      </PageHead>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: -8, marginBottom: 22 }}>
         <div className="seg">
           {QUICK.map(([id, h]) => (
             <button key={id} className={spanLabel === id ? "on" : ""} onClick={() => setQuick(h)}>{id}</button>
           ))}
         </div>
-        <input type="datetime-local" className="input" style={{ width: 178, marginBottom: 0 }} value={from} max={to} onChange={(e) => setFrom(e.target.value)} title="From" />
+        <input type="datetime-local" className="input" style={{ width: 210, marginBottom: 0 }} value={from} max={to} onChange={(e) => setFrom(e.target.value)} title="From" />
         <span style={{ color: "var(--ink-3)" }}>→</span>
-        <input type="datetime-local" className="input" style={{ width: 178, marginBottom: 0 }} value={to} min={from} onChange={(e) => setTo(e.target.value)} title="To" />
-        <button className="btn btn-sec" onClick={() => go("/templates")}><Icon d={IC.tmpl} s={15} />Templates</button>
-        <button className="btn btn-primary" onClick={() => go("/inbox")}><Icon d={IC.inbox} s={15} />Open inbox</button>
-      </PageHead>
+        <input type="datetime-local" className="input" style={{ width: 210, marginBottom: 0 }} value={to} min={from} onChange={(e) => setTo(e.target.value)} title="To" />
+      </div>
 
       <div className="kpis k4">
         <div className="kpi"><div className="kl">Conversations</div><div className="kv">{dash(kpis.conversations)}</div><div className="ks">last {spanLabel}</div></div>

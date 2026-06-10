@@ -4,6 +4,7 @@ import Link from "next/link";
 import { RATES } from "@/lib/rates";
 import { supabaseBrowser } from "@/lib/supabase";
 import { formatPhone } from "@/lib/format";
+import { PageHead } from "@/lib/ui";
 
 type TplButton = { type: string; title: string; url?: string | null; phone?: string | null };
 type Tpl = { sid: string; name: string; status: string; body: string | null; variables: Record<string, string>; media?: string | null; footer?: string | null; buttons?: TplButton[] };
@@ -498,313 +499,317 @@ export default function Campaigns() {
   }
 
   return (
-    <div style={{ maxWidth: 760, margin: "0 auto", padding: "28px 20px" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
-        <h1 style={{ fontFamily: "Georgia, serif", fontWeight: 400, fontSize: 24, margin: "0 0 6px" }}>Campaigns</h1>
-        <Link href="/campaigns/history" style={{ fontSize: 13, color: "#6B6862", textDecoration: "none", whiteSpace: "nowrap" }}>Campaign log →</Link>
-      </div>
-      <p style={{ color: "#6B6862", fontSize: 14, marginTop: 0, marginBottom: 20 }}>
-        Send an approved template to many contacts at once. Blacklisted contacts are skipped automatically.
-      </p>
+    <div className="page">
+      <div className="maxw" style={{ maxWidth: 760 }}>
+        <PageHead title="Campaigns" sub="Send an approved template to many contacts at once. Blacklisted contacts are skipped automatically.">
+          <Link href="/campaigns/history" className="btn btn-sec btn-sm">Campaign log →</Link>
+        </PageHead>
 
-      <Section title="1 · Template">
-        <select value={tplSid} onChange={(e) => { setTplSid(e.target.value); setVars({}); setVarMap({}); }} style={input}>
-          <option value="">Select an approved template…</option>
-          {tpls.map((t) => <option key={t.sid} value={t.sid}>{t.name}</option>)}
-        </select>
-        {tpl && (tpl.body || tpl.media || (tpl.buttons?.length ?? 0) > 0) && (
-          <div style={{ marginTop: 10, maxWidth: 360 }}>
-            <div style={{ fontSize: 12, color: "#6B6862", marginBottom: 6 }}>Preview{sampleRec ? " (first recipient)" : ""}</div>
-            <div style={{ background: "#fff", border: "1px solid #E4E1DB", borderRadius: 10, overflow: "hidden", boxShadow: "0 1px 2px rgba(0,0,0,0.06)" }}>
-              {tpl.media && <img src={tpl.media} alt="" style={{ display: "block", width: "100%", maxHeight: 188, objectFit: "cover" }} />}
-              {tpl.body && <div style={{ padding: "10px 12px 4px", fontSize: 14, whiteSpace: "pre-wrap", lineHeight: 1.4 }}>{renderLabel(tpl, previewVars)}</div>}
-              {tpl.footer && <div style={{ padding: "0 12px 10px", fontSize: 12, color: "#9a958c" }}>{tpl.footer}</div>}
-              {(tpl.buttons?.length ?? 0) > 0 && (
-                <div style={{ borderTop: "1px solid #ECE9E3" }}>
-                  {tpl.buttons!.map((b, bi) => {
-                    const icon = b.type === "URL" ? "🔗" : b.type === "PHONE_NUMBER" ? "📞" : "↩︎";
-                    return (
-                      <div key={bi} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "9px 12px", borderTop: bi ? "1px solid #ECE9E3" : "none", color: "#1B7EC2", fontSize: 14, fontWeight: 500 }}>
-                        <span style={{ fontSize: 13 }}>{icon}</span>{b.title}
-                      </div>
-                    );
-                  })}
-                </div>
+        <div className="sect">
+          <div className="sect-t">1 · Template</div>
+          <select value={tplSid} onChange={(e) => { setTplSid(e.target.value); setVars({}); setVarMap({}); }} className="input">
+            <option value="">Select an approved template…</option>
+            {tpls.map((t) => <option key={t.sid} value={t.sid}>{t.name}</option>)}
+          </select>
+          {tpl && (tpl.body || tpl.media || (tpl.buttons?.length ?? 0) > 0) && (
+            <div style={{ marginTop: 12, maxWidth: 360 }}>
+              <div className="dlabel" style={{ marginTop: 0 }}>Preview{sampleRec ? " (first recipient)" : ""}</div>
+              <div className="wa-bubble" style={{ maxWidth: "100%" }}>
+                {tpl.media && <img className="bimg" src={tpl.media} alt="" />}
+                {tpl.body && <div className="bbody">{renderLabel(tpl, previewVars)}</div>}
+                {tpl.footer && <div className="bfoot">{tpl.footer}</div>}
+                {(tpl.buttons?.length ?? 0) > 0 && (
+                  <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
+                    {tpl.buttons!.map((b, bi) => {
+                      const icon = b.type === "URL" ? "🔗" : b.type === "PHONE_NUMBER" ? "📞" : "↩︎";
+                      return (
+                        <div key={bi} className="wa-reply" style={{ maxWidth: "100%" }}>
+                          <span style={{ fontSize: 13 }}>{icon}</span>{b.title}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          {tplVars.length > 0 && (
+            <div style={{ marginTop: 14 }}>
+              <div className="hint" style={{ marginTop: 0, marginBottom: 6 }}>Fill each variable with fixed text or a CRM field (personalized per recipient).</div>
+              {tplVars.map((k, i) => {
+                const src = effSrc(k, i);
+                return (
+                  <div key={k} style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                    <span className="varkey">{`{{${k}}}`}</span>
+                    <select value={src} onChange={(e) => setVarMap({ ...varMap, [k]: e.target.value })} className="input" style={{ width: 160 }}>
+                      <option value="fixed">Fixed text</option>
+                      {CRM_VAR_FIELDS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
+                    </select>
+                    <input value={vars[k] || ""} onChange={(e) => setVars({ ...vars, [k]: e.target.value })} placeholder={src === "fixed" ? "value for all recipients" : "fallback if missing"} className="input" style={{ flex: 1, minWidth: 150 }} />
+                  </div>
+                );
+              })}
+              {pasted?.valueCols.length ? (
+                <div className="hint" style={{ color: "var(--green-ink)" }}>Personalizing from your CSV columns: {pasted.valueCols.join(", ")}.</div>
+              ) : Object.values(varMap).some((v) => v !== "fixed") && source !== "crm" && (
+                <div className="hint" style={{ color: "var(--amber-ink)" }}>CRM fields only fill for recipients loaded from a CRM segment. A plain pasted number list uses the fallback text. Include a header row (phone,first_name,community) to personalize from a CSV.</div>
               )}
             </div>
+          )}
+
+          {tpl && (
+            <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
+              <div className="dlabel" style={{ marginTop: 0 }}>Send test</div>
+              <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
+                <div style={{ flex: 1, minWidth: 180 }}>
+                  <label className="label">Your number (saved)</label>
+                  <input
+                    value={testPhone}
+                    onChange={(e) => { setTestPhone(e.target.value); try { localStorage.setItem("ere_wa_test_phone", e.target.value); } catch {} }}
+                    placeholder="+971XXXXXXXXX"
+                    className="input"
+                  />
+                </div>
+                <button
+                  onClick={sendTest}
+                  disabled={sendingTest || !testPhone.trim()}
+                  className="btn btn-sec"
+                >
+                  {sendingTest ? "Sending…" : "Send test to me →"}
+                </button>
+              </div>
+              <div className="hint">
+                Sends the template with the variable values shown in the preview above. Bypasses daily cap and opt-in checks.
+              </div>
+              {testStatus && (
+                testStatus.startsWith("Sent")
+                  ? <div className="ok-box">{testStatus}</div>
+                  : <div className="err-box">{testStatus}</div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="sect">
+          <div className="sect-t">2 · Recipients</div>
+          <div className="seg" style={{ marginBottom: 12 }}>
+            {(["manual", "crm"] as const).map((m) => (
+              <button key={m} onClick={() => setSource(m)} className={source === m ? "on" : ""}>
+                {m === "manual" ? "Paste / CSV" : "From CRM segment"}
+              </button>
+            ))}
           </div>
-        )}
-        {tplVars.length > 0 && (
-          <div style={{ marginTop: 12 }}>
-            <div style={{ fontSize: 13, color: "#6B6862", marginBottom: 4 }}>Fill each variable with fixed text or a CRM field (personalized per recipient).</div>
-            {tplVars.map((k, i) => {
-              const src = effSrc(k, i);
-              return (
-                <div key={k} style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-                  <span style={{ fontSize: 13, fontWeight: 600, width: 42, flexShrink: 0 }}>{`{{${k}}}`}</span>
-                  <select value={src} onChange={(e) => setVarMap({ ...varMap, [k]: e.target.value })} style={{ ...input, width: 160, marginBottom: 0 }}>
-                    <option value="fixed">Fixed text</option>
-                    {CRM_VAR_FIELDS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
+
+          {source === "manual" && (
+            <>
+              <textarea value={raw} onChange={(e) => setRaw(e.target.value)} rows={pasted ? 3 : 5} placeholder="Paste numbers, one per line (e.g. +9715XXXXXXXX) — or a CSV with a phone,first_name,… header" className="input" style={{ fontFamily: pasted ? "var(--mono)" : undefined, fontSize: pasted ? 12 : undefined }} />
+              <label className="hint" style={{ display: "block", cursor: "pointer", marginTop: 8 }}>
+                <input type="file" accept=".csv,text/csv,text/plain" onChange={onFile} style={{ fontSize: 13 }} />
+              </label>
+              {pasted && <RecipientTable records={pasted.records} valueCols={pasted.valueCols} tplVars={tplVars} />}
+            </>
+          )}
+
+          {source === "crm" && (
+            <div>
+              {Object.keys(savedSegs).length > 0 && (
+                <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
+                  <span className="hint" style={{ marginTop: 0 }}>Saved:</span>
+                  {Object.keys(savedSegs).map((name) => (
+                    <span key={name} className="metric" style={{ marginRight: 0 }}>
+                      <button onClick={() => applySegment(name)} title="Load this segment" style={{ padding: 0, fontSize: 12, color: "inherit" }}>{name}</button>
+                      <button onClick={() => deleteSegment(name)} title="Delete" style={{ padding: 0, color: "var(--ink-3)" }}>×</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 8 }}>
+                {(["community", "nationality", "unit_type", "building"] as const).map((col) => (
+                  <select key={col} value={crmFilters[col] || ""} onChange={(e) => setCrmFilters({ ...crmFilters, [col]: e.target.value })} className="input">
+                    <option value="">{col.replace("_", " ")}: any</option>
+                    {(options[col] || []).map((o: any) => <option key={o.val} value={o.val}>{o.val} ({o.n})</option>)}
                   </select>
-                  <input value={vars[k] || ""} onChange={(e) => setVars({ ...vars, [k]: e.target.value })} placeholder={src === "fixed" ? "value for all recipients" : "fallback if missing"} style={{ ...input, flex: 1, minWidth: 150, marginBottom: 0 }} />
+                ))}
+                <select value={crmFilters.number_of_properties || ""} onChange={(e) => setCrmFilters({ ...crmFilters, number_of_properties: e.target.value })} className="input">
+                  <option value="">properties: any</option>
+                  {["1", "2", "3", "4", "5", "6", "7", "8", "9", "10+"].map((n) => <option key={n} value={n}>{n} {n === "1" ? "property" : "properties"}</option>)}
+                </select>
+                <select value={crmFilters.verified_source || ""} onChange={(e) => setCrmFilters({ ...crmFilters, verified_source: e.target.value })} className="input">
+                  <option value="">source: any</option>
+                  {["Property Finder", "Bayut", "AiLookup", "Property Monitor", "Dubizzle"].map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
+                <label className="hint" style={{ marginTop: 0 }}>Value AED
+                  <input type="number" value={crmFilters.value_min || ""} min={0} placeholder="min" onChange={(e) => setCrmFilters({ ...crmFilters, value_min: e.target.value })} className="input" style={{ width: 110, marginLeft: 6, display: "inline-block" }} />
+                </label>
+                <span style={{ color: "var(--ink-3)" }}>to</span>
+                <input type="number" value={crmFilters.value_max || ""} min={0} placeholder="max" onChange={(e) => setCrmFilters({ ...crmFilters, value_max: e.target.value })} className="input" style={{ width: 110 }} />
+                <label className="hint" style={{ marginTop: 0, display: "flex", alignItems: "center", gap: 6, marginLeft: "auto" }}>
+                  <input type="checkbox" checked={mobileOnly} onChange={(e) => setMobileOnly(e.target.checked)} /> Mobile numbers only
+                </label>
+              </div>
+              {filterChips().length > 0 && (
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 10 }}>
+                  {filterChips().map((c) => (
+                    <button key={c.key} onClick={() => clearFilter(c.key)} title="Remove filter" className="metric" style={{ marginRight: 0 }}>
+                      {c.label} <span style={{ color: "var(--ink-3)" }}>×</span>
+                    </button>
+                  ))}
+                  <button onClick={() => setCrmFilters({})} className="btn btn-ghost btn-sm">Clear all</button>
                 </div>
-              );
-            })}
-            {pasted?.valueCols.length ? (
-              <div style={{ fontSize: 12, color: "#2e7d32", marginTop: 6 }}>Personalizing from your CSV columns: {pasted.valueCols.join(", ")}.</div>
-            ) : Object.values(varMap).some((v) => v !== "fixed") && source !== "crm" && (
-              <div style={{ fontSize: 12, color: "#9a6700", marginTop: 6 }}>CRM fields only fill for recipients loaded from a CRM segment. A plain pasted number list uses the fallback text. Include a header row (phone,first_name,community) to personalize from a CSV.</div>
-            )}
-          </div>
-        )}
-
-        {tpl && (
-          <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid #E4E1DB" }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: "#6B6862", marginBottom: 8, letterSpacing: 0.2 }}>SEND TEST</div>
-            <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
-              <div style={{ flex: 1, minWidth: 180 }}>
-                <div style={{ fontSize: 12, color: "#6B6862", marginBottom: 4 }}>Your number (saved)</div>
-                <input
-                  value={testPhone}
-                  onChange={(e) => { setTestPhone(e.target.value); try { localStorage.setItem("ere_wa_test_phone", e.target.value); } catch {} }}
-                  placeholder="+971XXXXXXXXX"
-                  style={{ ...input, marginBottom: 0 }}
-                />
+              )}
+              <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
+                <label className="hint" style={{ marginTop: 0 }}>Max recipients
+                  <input type="number" value={crmLimit} min={1} max={5000} onChange={(e) => setCrmLimit(parseInt(e.target.value || "500", 10))} className="input" style={{ width: 90, marginLeft: 6, display: "inline-block" }} />
+                </label>
+                <button onClick={loadSegment} disabled={crmLoading} className="btn btn-primary">
+                  {crmLoading ? "Loading…" : "Load recipients"}
+                </button>
+                <button onClick={saveSegment} title="Save these filters as a reusable segment" className="btn btn-sec">Save segment</button>
               </div>
-              <button
-                onClick={sendTest}
-                disabled={sendingTest || !testPhone.trim()}
-                style={{ ...pill, padding: "10px 16px", whiteSpace: "nowrap", opacity: sendingTest || !testPhone.trim() ? 0.5 : 1 }}
-              >
-                {sendingTest ? "Sending…" : "Send test to me →"}
-              </button>
-            </div>
-            <div style={{ fontSize: 12, color: "#6B6862", marginTop: 5 }}>
-              Sends the template with the variable values shown in the preview above. Bypasses daily cap and opt-in checks.
-            </div>
-            {testStatus && (
-              <div style={{ fontSize: 13, marginTop: 6, color: testStatus.startsWith("Sent") ? "#137333" : "#b00020" }}>
-                {testStatus}
+              <div style={{ marginTop: 10, padding: "10px 12px", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: "var(--r)", color: "var(--ink)" }}>
+                {crmMatch == null ? (
+                  <span className="hint" style={{ marginTop: 0 }}>Counting matching contacts…</span>
+                ) : (
+                  <>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+                      <b style={{ fontSize: 18 }}>~{crmMatch.toLocaleString()}</b>
+                      <span style={{ fontSize: 13 }}>contact{crmMatch === 1 ? "" : "s"} match this segment</span>
+                    </div>
+                    <div style={{ fontSize: 13, marginTop: 4 }}>
+                      You’ll load up to <b>{Math.min(crmLimit, crmMatch).toLocaleString()}</b>{mobileOnly && <span style={{ color: "var(--ink-2)" }}> — fewer after mobile-only filtering</span>}.
+                    </div>
+                  </>
+                )}
               </div>
-            )}
-          </div>
-        )}
-      </Section>
+              <div className="hint" title="Excludes any contact marked do-not-call, uncontactable, or as a switchboard number.">Approximate, before mobile-only filtering. Excludes do-not-call, uncontactable, and switchboards.{mobileOnly && " Mobile-only is on, so the loaded list will be smaller than this count."}</div>
+            </div>
+          )}
 
-      <Section title="2 · Recipients">
-        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-          {(["manual", "crm"] as const).map((m) => (
-            <button key={m} onClick={() => setSource(m)} style={{ ...pill, ...(source === m ? pillActive : {}) }}>
-              {m === "manual" ? "Paste / CSV" : "From CRM segment"}
-            </button>
-          ))}
+          {(numbers.length > 0 || (source === "manual" && raw.trim() !== "")) && (
+            <div style={{ fontSize: 13, color: numbers.length ? "var(--green-ink)" : "var(--ink-3)", fontWeight: 600, marginTop: 10 }}>
+              {numbers.length} valid recipient{numbers.length === 1 ? "" : "s"}{source === "crm" && numbers.length > 0 ? " loaded" : ""}
+            </div>
+          )}
         </div>
 
-        {source === "manual" && (
-          <>
-            <textarea value={raw} onChange={(e) => setRaw(e.target.value)} rows={pasted ? 3 : 5} placeholder="Paste numbers, one per line (e.g. +9715XXXXXXXX) — or a CSV with a phone,first_name,… header" style={{ ...input, resize: "vertical", fontFamily: pasted ? "ui-monospace, Menlo, monospace" : undefined, fontSize: pasted ? 12 : 14 }} />
-            <label style={{ fontSize: 13, color: "#6B6862", cursor: "pointer" }}>
-              <input type="file" accept=".csv,text/csv,text/plain" onChange={onFile} style={{ fontSize: 13 }} />
-            </label>
-            {pasted && <RecipientTable records={pasted.records} valueCols={pasted.valueCols} tplVars={tplVars} />}
-          </>
-        )}
+        <div className="sect">
+          <div className="sect-t">3 · Send from</div>
+          <select value={sender} onChange={(e) => setSender(e.target.value)} className="input" style={{ maxWidth: 280 }}>
+            {senders.length === 0 && <option value="">(no sender configured)</option>}
+            {senders.map((s) => <option key={s} value={s}>{formatPhone(s)}</option>)}
+          </select>
 
-        {source === "crm" && (
-          <div>
-            {Object.keys(savedSegs).length > 0 && (
-              <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
-                <span style={{ fontSize: 13, color: "#6B6862" }}>Saved:</span>
-                {Object.keys(savedSegs).map((name) => (
-                  <span key={name} style={{ ...pill, padding: "4px 10px", fontSize: 12, display: "inline-flex", gap: 6, alignItems: "center" }}>
-                    <button onClick={() => applySegment(name)} title="Load this segment" style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 12, color: "inherit" }}>{name}</button>
-                    <button onClick={() => deleteSegment(name)} title="Delete" style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: "#9a958c" }}>×</button>
-                  </span>
+          <div className="hint" style={{ margin: "14px 0 8px" }}>How established is this number? Sets a safe daily cap so a young number doesn’t get flagged.</div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {WARMUP.map((w) => (
+              <div
+                key={w.id}
+                onClick={() => { setWarmup(w.id); if (mode === "drip") { setPerBatch(w.batch); setIntervalMin(w.interval); } }}
+                className={`pick${warmup === w.id ? " on" : ""}`}
+                style={{ flex: "1 1 160px", marginBottom: 0 }}
+              >
+                <div className="pk-radio" />
+                <div className="pk-main">
+                  <div className="pk-t">{w.label}</div>
+                  <div className="pk-s">{w.sub} · cap {w.cap}/day</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="sect">
+          <div className="sect-t">4 · When to send</div>
+          <div className="seg">
+            {([["now", "Send now"], ["later", "Send later"], ["drip", "Spread it out"]] as const).map(([m, lbl]) => (
+              <button key={m} onClick={() => setMode(m)} className={mode === m ? "on" : ""}>{lbl}</button>
+            ))}
+          </div>
+
+          {mode === "later" && (
+            <div style={{ marginTop: 12 }}>
+              <input type="datetime-local" value={sendAt} onChange={(e) => setSendAt(e.target.value)} className="input" style={{ maxWidth: 280 }} />
+              <div className="hint">Anytime from 15 minutes to 7 days from now.</div>
+            </div>
+          )}
+
+          {mode === "drip" && (
+            <div style={{ marginTop: 12 }}>
+              <div className="hint" style={{ marginTop: 0, marginBottom: 8 }}>Send a small batch, wait, repeat - the gentle way to protect your number. Pick a pace:</div>
+              <div className="seg" style={{ marginBottom: 10, flexWrap: "wrap" }}>
+                {[{ p: 50, m: 120, l: "50 every 2 hours" }, { p: 100, m: 60, l: "100 every hour" }, { p: 25, m: 30, l: "25 every 30 min" }].map((x) => (
+                  <button key={x.l} onClick={() => { setPerBatch(x.p); setIntervalMin(x.m); }} className={perBatch === x.p && intervalMin === x.m ? "on" : ""}>{x.l}</button>
                 ))}
               </div>
-            )}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 8 }}>
-              {(["community", "nationality", "unit_type", "building"] as const).map((col) => (
-                <select key={col} value={crmFilters[col] || ""} onChange={(e) => setCrmFilters({ ...crmFilters, [col]: e.target.value })} style={{ ...input, marginBottom: 0 }}>
-                  <option value="">{col.replace("_", " ")}: any</option>
-                  {(options[col] || []).map((o: any) => <option key={o.val} value={o.val}>{o.val} ({o.n})</option>)}
+              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", fontSize: 14 }}>
+                <span style={{ color: "var(--ink-2)" }}>Send</span>
+                <input type="number" value={perBatch} min={1} max={250} onChange={(e) => setPerBatch(parseInt(e.target.value || "50", 10))} className="input" style={{ width: 80 }} />
+                <span style={{ color: "var(--ink-2)" }}>recipients every</span>
+                <select value={intervalMin} onChange={(e) => setIntervalMin(parseInt(e.target.value, 10))} className="input" style={{ width: 130 }}>
+                  {[30, 60, 120, 180, 240, 360, 720, 1440].map((m) => <option key={m} value={m}>{humanInterval(m)}</option>)}
                 </select>
-              ))}
-              <select value={crmFilters.number_of_properties || ""} onChange={(e) => setCrmFilters({ ...crmFilters, number_of_properties: e.target.value })} style={{ ...input, marginBottom: 0 }}>
-                <option value="">properties: any</option>
-                {["1", "2", "3", "4", "5", "6", "7", "8", "9", "10+"].map((n) => <option key={n} value={n}>{n} {n === "1" ? "property" : "properties"}</option>)}
-              </select>
-              <select value={crmFilters.verified_source || ""} onChange={(e) => setCrmFilters({ ...crmFilters, verified_source: e.target.value })} style={{ ...input, marginBottom: 0 }}>
-                <option value="">source: any</option>
-                {["Property Finder", "Bayut", "AiLookup", "Property Monitor", "Dubizzle"].map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
-              <label style={{ fontSize: 13, color: "#6B6862" }}>Value AED
-                <input type="number" value={crmFilters.value_min || ""} min={0} placeholder="min" onChange={(e) => setCrmFilters({ ...crmFilters, value_min: e.target.value })} style={{ ...input, width: 110, marginLeft: 6, marginBottom: 0, display: "inline-block" }} />
-              </label>
-              <span style={{ color: "#9a958c" }}>to</span>
-              <input type="number" value={crmFilters.value_max || ""} min={0} placeholder="max" onChange={(e) => setCrmFilters({ ...crmFilters, value_max: e.target.value })} style={{ ...input, width: 110, marginBottom: 0 }} />
-              <label style={{ fontSize: 13, color: "#3a3a3a", display: "flex", alignItems: "center", gap: 6, marginLeft: "auto" }}>
-                <input type="checkbox" checked={mobileOnly} onChange={(e) => setMobileOnly(e.target.checked)} /> Mobile numbers only
-              </label>
-            </div>
-            {filterChips().length > 0 && (
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 10 }}>
-                {filterChips().map((c) => (
-                  <button key={c.key} onClick={() => clearFilter(c.key)} title="Remove filter" style={{ ...pill, padding: "4px 10px", fontSize: 12, display: "inline-flex", gap: 6, alignItems: "center" }}>
-                    {c.label} <span style={{ color: "#9a958c" }}>×</span>
-                  </button>
-                ))}
-                <button onClick={() => setCrmFilters({})} style={{ ...pill, padding: "4px 10px", fontSize: 12, color: "#6B6862" }}>Clear all</button>
               </div>
-            )}
-            <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
-              <label style={{ fontSize: 13, color: "#6B6862" }}>Max recipients
-                <input type="number" value={crmLimit} min={1} max={5000} onChange={(e) => setCrmLimit(parseInt(e.target.value || "500", 10))} style={{ ...input, width: 90, marginLeft: 6, marginBottom: 0, display: "inline-block" }} />
-              </label>
-              <button onClick={loadSegment} disabled={crmLoading} style={{ ...pillActive, padding: "8px 16px", borderRadius: 8, border: "none", cursor: "pointer" }}>
-                {crmLoading ? "Loading…" : "Load recipients"}
-              </button>
-              <button onClick={saveSegment} title="Save these filters as a reusable segment" style={{ ...pill, padding: "8px 14px" }}>Save segment</button>
-            </div>
-            <div style={{ marginTop: 10, padding: "10px 12px", background: "#F5F5F5", borderRadius: 8, color: "#3a3a3a" }}>
-              {crmMatch == null ? (
-                <span style={{ fontSize: 13, color: "#6B6862" }}>Counting matching contacts…</span>
-              ) : (
-                <>
-                  <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
-                    <b style={{ fontSize: 18 }}>~{crmMatch.toLocaleString()}</b>
-                    <span style={{ fontSize: 13 }}>contact{crmMatch === 1 ? "" : "s"} match this segment</span>
-                  </div>
-                  <div style={{ fontSize: 13, marginTop: 4 }}>
-                    You’ll load up to <b>{Math.min(crmLimit, crmMatch).toLocaleString()}</b>{mobileOnly && <span style={{ color: "#6B6862" }}> — fewer after mobile-only filtering</span>}.
-                  </div>
-                </>
+              {drip && (
+                drip.fits
+                  ? <div className="ok-box">{`${numbers.length} recipients in ${drip.chunks} batch${drip.chunks === 1 ? "" : "es"} - first batch now, finishes around ${drip.finishLabel}.`}</div>
+                  : <div className="err-box">Too slow for this list - it would take over 7 days (Twilio's limit). Use a bigger batch or shorter interval.</div>
               )}
             </div>
-            <div style={{ fontSize: 11, color: "#9a958c", marginTop: 6 }} title="Excludes any contact marked do-not-call, uncontactable, or as a switchboard number.">Approximate, before mobile-only filtering. Excludes do-not-call, uncontactable, and switchboards.{mobileOnly && " Mobile-only is on, so the loaded list will be smaller than this count."}</div>
-          </div>
-        )}
-
-        {(numbers.length > 0 || (source === "manual" && raw.trim() !== "")) && (
-          <div style={{ fontSize: 13, color: numbers.length ? "#137333" : "#9a958c", fontWeight: 600, marginTop: 10 }}>
-            {numbers.length} valid recipient{numbers.length === 1 ? "" : "s"}{source === "crm" && numbers.length > 0 ? " loaded" : ""}
-          </div>
-        )}
-      </Section>
-
-      <Section title="3 · Send from">
-        <select value={sender} onChange={(e) => setSender(e.target.value)} style={{ ...input, maxWidth: 280 }}>
-          {senders.length === 0 && <option value="">(no sender configured)</option>}
-          {senders.map((s) => <option key={s} value={s}>{formatPhone(s)}</option>)}
-        </select>
-
-        <div style={{ fontSize: 13, color: "#6B6862", margin: "14px 0 8px" }}>How established is this number? Sets a safe daily cap so a young number doesn’t get flagged.</div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {WARMUP.map((w) => (
-            <button
-              key={w.id}
-              onClick={() => { setWarmup(w.id); if (mode === "drip") { setPerBatch(w.batch); setIntervalMin(w.interval); } }}
-              style={{ ...pill, textAlign: "left", lineHeight: 1.3, ...(warmup === w.id ? pillActive : {}) }}
-            >
-              <div style={{ fontWeight: 600 }}>{w.label}</div>
-              <div style={{ fontSize: 11, opacity: 0.8 }}>{w.sub} · cap {w.cap}/day</div>
-            </button>
-          ))}
-        </div>
-      </Section>
-
-      <Section title="4 · When to send">
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {([["now", "Send now"], ["later", "Send later"], ["drip", "Spread it out"]] as const).map(([m, lbl]) => (
-            <button key={m} onClick={() => setMode(m)} style={{ ...pill, ...(mode === m ? pillActive : {}) }}>{lbl}</button>
-          ))}
+          )}
         </div>
 
-        {mode === "later" && (
-          <div style={{ marginTop: 12 }}>
-            <input type="datetime-local" value={sendAt} onChange={(e) => setSendAt(e.target.value)} style={{ ...input, maxWidth: 280 }} />
-            <div style={{ fontSize: 12, color: "#9a958c", marginTop: 6 }}>Anytime from 15 minutes to 7 days from now.</div>
+        {/* Compliance - keeps the number's quality rating healthy */}
+        <div className="card">
+          <div className="sect-t">Before you send</div>
+          <label style={{ fontSize: 14, display: "flex", gap: 8, alignItems: "flex-start", cursor: "pointer", marginBottom: 10 }}>
+            <input type="checkbox" checked={optIn} onChange={(e) => setOptIn(e.target.checked)} style={{ marginTop: 3, accentColor: "var(--blue)" }} />
+            <span>I confirm these recipients <b>opted in</b> to receive WhatsApp messages from ERE Homes.</span>
+          </label>
+          <label style={{ fontSize: 14, display: "flex", gap: 8, alignItems: "flex-start", cursor: "pointer", marginBottom: 10 }}>
+            <input type="checkbox" checked={excludeReached} onChange={(e) => setExcludeReached(e.target.checked)} style={{ marginTop: 3, accentColor: "var(--blue)" }} />
+            <span><b>Skip anyone already reached.</b> Drops contacts who already got a delivered/read message, so a re-send never double-messages them. Failed or never-sent numbers stay in for a retry.</span>
+          </label>
+          <div style={{ fontSize: 13, background: "var(--amber-bg)", border: "1px solid var(--amber-border)", borderRadius: "var(--r)", padding: "8px 12px", color: "var(--amber-ink)" }}>
+            + Make sure this template gives a clear way out (e.g. “Reply STOP to unsubscribe”). When someone replies STOP they’re blacklisted automatically and never messaged again.
           </div>
-        )}
+        </div>
 
-        {mode === "drip" && (
-          <div style={{ marginTop: 12 }}>
-            <div style={{ fontSize: 13, color: "#6B6862", marginBottom: 8 }}>Send a small batch, wait, repeat - the gentle way to protect your number. Pick a pace:</div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-              {[{ p: 50, m: 120, l: "50 every 2 hours" }, { p: 100, m: 60, l: "100 every hour" }, { p: 25, m: 30, l: "25 every 30 min" }].map((x) => (
-                <button key={x.l} onClick={() => { setPerBatch(x.p); setIntervalMin(x.m); }} style={{ ...pill, ...(perBatch === x.p && intervalMin === x.m ? pillActive : {}) }}>{x.l}</button>
-              ))}
+        <div className="card">
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14 }}>
+            <span style={{ color: "var(--ink-2)" }}>Recipients</span><b>{numbers.length}</b>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, marginTop: 6 }}>
+            <span style={{ color: "var(--ink-2)" }}>Est. cost floor (Twilio fee)</span><b>${estUsd.toFixed(2)}</b>
+          </div>
+          <div className="hint">Plus Meta marketing rate per message (country-specific). Outside the 24h window, template sending is required - which this uses.</div>
+        </div>
+
+        {err && <div className="err-box">{err}</div>}
+        {doneMsg && <div className="ok-box">{doneMsg}</div>}
+
+        {progress && (
+          <div style={{ marginTop: 14, marginBottom: 14 }}>
+            <div className="prog-bar" style={{ width: "100%", height: 8 }}>
+              <div className="prog-fill" style={{ width: `${(progress.done / progress.total) * 100}%` }} />
             </div>
-            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", fontSize: 14 }}>
-              <span style={{ color: "#6B6862" }}>Send</span>
-              <input type="number" value={perBatch} min={1} max={250} onChange={(e) => setPerBatch(parseInt(e.target.value || "50", 10))} style={{ ...input, width: 80, marginBottom: 0 }} />
-              <span style={{ color: "#6B6862" }}>recipients every</span>
-              <select value={intervalMin} onChange={(e) => setIntervalMin(parseInt(e.target.value, 10))} style={{ ...input, width: 130, marginBottom: 0 }}>
-                {[30, 60, 120, 180, 240, 360, 720, 1440].map((m) => <option key={m} value={m}>{humanInterval(m)}</option>)}
-              </select>
+            <div className="hint">
+              {progress.done}/{progress.total} processed · {progress.sent} {mode === "now" ? "queued" : "scheduled"} · {progress.skipped} skipped · {progress.failed} failed
             </div>
-            {drip && (
-              <div style={{ marginTop: 10, fontSize: 13, color: drip.fits ? "#137333" : "#b00020", background: drip.fits ? "#e7f4ea" : "#fdecea", padding: 10, borderRadius: 8 }}>
-                {drip.fits
-                  ? `${numbers.length} recipients in ${drip.chunks} batch${drip.chunks === 1 ? "" : "es"} - first batch now, finishes around ${drip.finishLabel}.`
-                  : `Too slow for this list - it would take over 7 days (Twilio's limit). Use a bigger batch or shorter interval.`}
-              </div>
-            )}
           </div>
         )}
-      </Section>
 
-      {/* Compliance - keeps the number's quality rating healthy */}
-      <div style={{ background: "#FFFFFF", border: "1px solid #E4E1DB", borderRadius: 12, padding: 16, marginBottom: 14 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Before you send</div>
-        <label style={{ fontSize: 14, display: "flex", gap: 8, alignItems: "flex-start", cursor: "pointer", marginBottom: 10 }}>
-          <input type="checkbox" checked={optIn} onChange={(e) => setOptIn(e.target.checked)} style={{ marginTop: 3 }} />
-          <span>I confirm these recipients <b>opted in</b> to receive WhatsApp messages from ERE Homes.</span>
-        </label>
-        <label style={{ fontSize: 14, display: "flex", gap: 8, alignItems: "flex-start", cursor: "pointer", marginBottom: 10 }}>
-          <input type="checkbox" checked={excludeReached} onChange={(e) => setExcludeReached(e.target.checked)} style={{ marginTop: 3 }} />
-          <span><b>Skip anyone already reached.</b> Drops contacts who already got a delivered/read message, so a re-send never double-messages them. Failed or never-sent numbers stay in for a retry.</span>
-        </label>
-        <div style={{ fontSize: 13, background: "#FFF8E6", border: "1px solid #F0E2B8", borderRadius: 8, padding: "8px 12px", marginBottom: 10, color: "#6b5a16" }}>
-          + Make sure this template gives a clear way out (e.g. “Reply STOP to unsubscribe”). When someone replies STOP they’re blacklisted automatically and never messaged again.
-        </div>
-      </div>
+        <button onClick={run} disabled={running} className="btn btn-primary" style={{ marginTop: 16 }}>
+          {running ? "Working…" : mode === "now" ? "Send campaign" : mode === "later" ? "Schedule campaign" : "Start drip campaign"}
+        </button>
 
-      <div style={{ background: "#fff", border: "1px solid #E4E1DB", borderRadius: 12, padding: 16, marginBottom: 16 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14 }}>
-          <span style={{ color: "#6B6862" }}>Recipients</span><b>{numbers.length}</b>
-        </div>
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, marginTop: 6 }}>
-          <span style={{ color: "#6B6862" }}>Est. cost floor (Twilio fee)</span><b>${estUsd.toFixed(2)}</b>
-        </div>
-        <div style={{ fontSize: 11, color: "#9a958c", marginTop: 6 }}>Plus Meta marketing rate per message (country-specific). Outside the 24h window, template sending is required - which this uses.</div>
-      </div>
-
-      {err && <div style={errBox}>{err}</div>}
-      {doneMsg && <div style={{ background: "#e7f4ea", color: "#137333", padding: 12, borderRadius: 8, marginBottom: 14, fontSize: 14 }}>{doneMsg}</div>}
-
-      {progress && (
-        <div style={{ marginBottom: 14 }}>
-          <div style={{ height: 8, background: "#E4E1DB", borderRadius: 8, overflow: "hidden" }}>
-            <div style={{ height: "100%", width: `${(progress.done / progress.total) * 100}%`, background: "#137333" }} />
+        {doneMsg && (
+          <div style={{ marginTop: 16 }}>
+            <Link href="/campaigns/history" className="card-link">View campaign log →</Link>
           </div>
-          <div style={{ fontSize: 12, color: "#6B6862", marginTop: 6 }}>
-            {progress.done}/{progress.total} processed · {progress.sent} {mode === "now" ? "queued" : "scheduled"} · {progress.skipped} skipped · {progress.failed} failed
-          </div>
-        </div>
-      )}
-
-      <button onClick={run} disabled={running} style={{ ...btn, background: "#137333", opacity: running ? 0.6 : 1 }}>
-        {running ? "Working…" : mode === "now" ? "Send campaign" : mode === "later" ? "Schedule campaign" : "Start drip campaign"}
-      </button>
-
-      {doneMsg && (
-        <div style={{ marginTop: 16 }}>
-          <Link href="/campaigns/history" style={{ fontSize: 13, color: "#137333" }}>View campaign log →</Link>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
@@ -818,15 +823,6 @@ function renderLabel(tpl: Tpl | undefined, vars: Record<string, string>) {
   for (const [k, v] of Object.entries(vars)) s = s.replace(new RegExp(`\\{\\{${k}\\}\\}`, "g"), v || `{{${k}}}`);
   return s;
 }
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div style={{ background: "#fff", border: "1px solid #E4E1DB", borderRadius: 12, padding: 18, marginBottom: 14 }}>
-      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10, letterSpacing: 0.3 }}>{title}</div>
-      {children}
-    </div>
-  );
-}
-
 // Parsed-CSV preview as a real table (phone + columns), so the user sees a clean
 // grid instead of raw comma text. Caps the visible rows to keep the box compact;
 // every row is scrollable. A column header shows →{{n}} when it feeds a template
@@ -835,45 +831,38 @@ function RecipientTable({ records, valueCols, tplVars }: { records: any[]; value
   const cap = 100;
   const shown = records.slice(0, cap);
   const nicely = (s: string) => s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-  const cellTd: React.CSSProperties = { padding: "7px 12px", borderBottom: "1px solid #F0EEE9", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 220 };
-  const headTh: React.CSSProperties = { padding: "8px 12px", textAlign: "left", fontSize: 11, letterSpacing: 0.4, textTransform: "uppercase", color: "#6B6862", fontWeight: 600, background: "#F7F6F4", borderBottom: "1px solid #E4E1DB", position: "sticky", top: 0, whiteSpace: "nowrap" };
+  const cellTd: React.CSSProperties = { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 220 };
   return (
-    <div style={{ marginTop: 12, border: "1px solid #E4E1DB", borderRadius: 10, overflow: "hidden" }}>
+    <div className="panel" style={{ marginTop: 12, borderTop: "1px solid var(--border)", borderRadius: "var(--r-lg)" }}>
       <div style={{ maxHeight: 320, overflow: "auto" }}>
-        <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 13 }}>
+        <table className="ttable">
           <thead>
             <tr>
-              <th style={{ ...headTh, width: 34, textAlign: "right", color: "#B5B0A6" }}>#</th>
-              <th style={headTh}>Phone</th>
+              <th style={{ width: 34, textAlign: "right", color: "var(--muted)" }}>#</th>
+              <th>Phone</th>
               {valueCols.map((c, i) => (
-                <th key={c} style={headTh}>
+                <th key={c}>
                   {nicely(c)}
-                  {tplVars[i] && <span style={{ marginLeft: 6, color: "#137333", fontWeight: 500, textTransform: "none", letterSpacing: 0 }}>{`→{{${tplVars[i]}}}`}</span>}
+                  {tplVars[i] && <span style={{ marginLeft: 6, color: "var(--green-ink)", fontWeight: 600, textTransform: "none", letterSpacing: 0 }}>{`→{{${tplVars[i]}}}`}</span>}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
             {shown.map((r, i) => (
-              <tr key={i}>
-                <td style={{ ...cellTd, textAlign: "right", color: "#B5B0A6", fontVariantNumeric: "tabular-nums" }}>{i + 1}</td>
-                <td style={{ ...cellTd, fontFamily: "ui-monospace, Menlo, monospace", color: "#3a3a3a" }}>+{String(r.phone).replace(/[^0-9]/g, "")}</td>
-                {valueCols.map((c) => <td key={c} style={cellTd} title={r[c] || ""}>{r[c] || <span style={{ color: "#C9C4BA" }}>—</span>}</td>)}
+              <tr key={i} className="norow">
+                <td style={{ ...cellTd, textAlign: "right", color: "var(--muted)", fontVariantNumeric: "tabular-nums" }}>{i + 1}</td>
+                <td className="mono" style={{ ...cellTd, color: "var(--ink-2)" }}>+{String(r.phone).replace(/[^0-9]/g, "")}</td>
+                {valueCols.map((c) => <td key={c} style={cellTd} title={r[c] || ""}>{r[c] || <span style={{ color: "var(--muted)" }}>—</span>}</td>)}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      <div style={{ padding: "8px 12px", background: "#FAF9F7", borderTop: "1px solid #E4E1DB", fontSize: 12, color: "#6B6862", display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-        <span><b style={{ color: "#137333" }}>{records.length}</b> recipient{records.length === 1 ? "" : "s"}{valueCols.length > 0 && <> · {valueCols.length} column{valueCols.length === 1 ? "" : "s"}</>}</span>
+      <div style={{ padding: "8px 16px", background: "var(--surface-2)", borderTop: "1px solid var(--border)", fontSize: 12, color: "var(--ink-2)", display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+        <span><b style={{ color: "var(--green-ink)" }}>{records.length}</b> recipient{records.length === 1 ? "" : "s"}{valueCols.length > 0 && <> · {valueCols.length} column{valueCols.length === 1 ? "" : "s"}</>}</span>
         {records.length > cap && <span>showing first {cap}</span>}
       </div>
     </div>
   );
 }
-
-const btn: React.CSSProperties = { padding: "12px 22px", background: "#141414", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 13, letterSpacing: 1, textTransform: "uppercase" };
-const pill: React.CSSProperties = { padding: "8px 16px", background: "#fff", border: "1px solid #E4E1DB", borderRadius: 20, cursor: "pointer", fontSize: 13 };
-const pillActive: React.CSSProperties = { background: "#141414", color: "#fff", borderColor: "#141414" };
-const input: React.CSSProperties = { width: "100%", padding: "10px 12px", border: "1px solid #E4E1DB", borderRadius: 8, fontSize: 14, boxSizing: "border-box", background: "#fff" };
-const errBox: React.CSSProperties = { background: "#fdecea", color: "#b00020", padding: 12, borderRadius: 8, marginBottom: 14, fontSize: 14 };

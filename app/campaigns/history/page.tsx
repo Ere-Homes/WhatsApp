@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { Icon, IC, PageHead, Skeleton } from "@/lib/ui";
 import { supabaseBrowser } from "@/lib/supabase";
 
 type Campaign = {
@@ -55,60 +56,65 @@ export default function CampaignHistory() {
   }
 
   return (
-    <div style={{ maxWidth: 880, margin: "0 auto", padding: "28px 20px" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
-        <h1 style={{ fontFamily: "Georgia, serif", fontWeight: 400, fontSize: 24, margin: "0 0 6px" }}>Campaign log</h1>
-        <div style={{ display: "flex", gap: 14, alignItems: "baseline" }}>
-          <Link href="/templates/performance" style={{ fontSize: 13, color: "#6B6862", textDecoration: "none", whiteSpace: "nowrap" }}>Template performance →</Link>
-          <Link href="/campaigns" style={{ fontSize: 13, color: "#6B6862", textDecoration: "none", whiteSpace: "nowrap" }}>+ New campaign</Link>
-        </div>
-      </div>
-      <p style={{ color: "#6B6862", fontSize: 14, marginTop: 0, marginBottom: hasActive ? 8 : 20 }}>
-        Every bulk send, with delivery results. Scheduled campaigns can be canceled before they go out.
-      </p>
+    <div className="page"><div className="maxw">
+      <PageHead title="Campaign log" sub="Every bulk send, with delivery results. Scheduled campaigns can be canceled before they go out.">
+        <Link className="btn btn-sec" href="/templates/performance"><Icon d={IC.insights} s={15} />Template performance</Link>
+        <Link className="btn btn-primary" href="/campaigns"><Icon d={IC.plus} s={16} />New campaign</Link>
+      </PageHead>
+
       {hasActive && (
-        <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12, color: "#137333", marginBottom: 18 }}>
-          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#137333", display: "inline-block" }} />
+        <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12, color: "var(--green-ink)", marginBottom: 16 }}>
+          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--green-dot)", display: "inline-block" }} />
           Live · auto-updating every 20s{updatedAt ? ` · last ${new Date(updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}` : ""}
         </div>
       )}
 
-      {rows === null && <div style={{ color: "#6B6862" }}>Loading…</div>}
-      {rows && rows.length === 0 && <div style={{ color: "#9a958c", background: "#fff", border: "1px solid #E4E1DB", borderRadius: 12, padding: 24, textAlign: "center" }}>No campaigns yet. <Link href="/campaigns" style={{ color: "#137333" }}>Send your first →</Link></div>}
-
-      {(rows || []).map((c) => {
-        const canCancel = c.status === "scheduled" && c.scheduled > 0;
-        return (
-          <div key={c.id} style={{ background: "#fff", border: "1px solid #E4E1DB", borderRadius: 12, padding: 16, marginBottom: 12 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 600, fontSize: 15 }}>{c.name}</div>
-                <div style={{ fontSize: 12, color: "#9a958c", marginTop: 2 }}>
-                  {new Date(c.created_at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-                  {c.sender && <> · from +{c.sender.replace("whatsapp:+", "").replace("+", "")}</>}
-                  {c.mode !== "now" && <> · {c.mode}</>}
-                </div>
-              </div>
-              {(() => { const ds = displayStatus(c, funnels[c.id]); return (
-                <span style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1, color: ds.color, border: `1px solid ${ds.color}`, borderRadius: 20, padding: "3px 10px", whiteSpace: "nowrap" }}>{ds.label}</span>
-              ); })()}
-            </div>
-
-            <Coverage c={c} f={funnels[c.id]} />
-            <DripTracker c={c} />
-
-            <div style={{ display: "flex", gap: 14, marginTop: 12 }}>
-              <button onClick={() => setOpenId(openId === c.id ? null : c.id)} style={linkBtn}>
-                {openId === c.id ? "Hide recipients" : "View recipients"}
-              </button>
-              {canCancel && <button onClick={() => cancel(c)} style={{ ...linkBtn, color: "#b00020" }}>Cancel scheduled</button>}
-            </div>
-
-            {openId === c.id && <Recipients campaignId={c.id} />}
+      {rows === null ? (
+        <div className="panel" style={{ borderTop: "1px solid var(--border)", borderRadius: "var(--r-lg)" }}><Skeleton rows={4} /></div>
+      ) : rows.length === 0 ? (
+        <div className="card" style={{ marginBottom: 0 }}>
+          <div className="empty">
+            <div className="ei"><Icon d={IC.camp} s={22} /></div>
+            <h4>No campaigns yet</h4>
+            <div>Bulk sends show up here with live delivery results. <Link href="/campaigns" style={{ color: "var(--blue)", fontWeight: 600 }}>Send your first →</Link></div>
           </div>
-        );
-      })}
-    </div>
+        </div>
+      ) : (
+        (rows || []).map((c) => {
+          const canCancel = c.status === "scheduled" && c.scheduled > 0;
+          const ds = displayStatus(c, funnels[c.id]);
+          return (
+            <div key={c.id} className="card" style={{ marginBottom: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+                <div className="camp-name" style={{ minWidth: 0 }}>
+                  <div className="cn-t" style={{ fontSize: 15 }}>{c.name}</div>
+                  <div className="cn-s">
+                    {new Date(c.created_at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                    {c.sender && <> · from +{c.sender.replace("whatsapp:+", "").replace("+", "")}</>}
+                    {c.mode !== "now" && <> · {c.mode}</>}
+                  </div>
+                </div>
+                <span className="badge" style={{ color: ds.color, borderColor: ds.color, background: "transparent" }}>
+                  <span className="bd" style={{ background: ds.color }} />{ds.label}
+                </span>
+              </div>
+
+              <Coverage c={c} f={funnels[c.id]} />
+              <DripTracker c={c} />
+
+              <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+                <button className="btn btn-sec btn-sm" onClick={() => setOpenId(openId === c.id ? null : c.id)}>
+                  {openId === c.id ? "Hide recipients" : "View recipients"}
+                </button>
+                {canCancel && <button className="btn btn-ghost danger btn-sm" onClick={() => cancel(c)}>Cancel scheduled</button>}
+              </div>
+
+              {openId === c.id && <Recipients campaignId={c.id} />}
+            </div>
+          );
+        })
+      )}
+    </div></div>
   );
 }
 
@@ -127,24 +133,24 @@ function Recipients({ campaignId }: { campaignId: string }) {
       .then(({ data }) => setList((data as any as Recipient[]) || []));
   }, [campaignId]); // eslint-disable-line
 
-  if (list === null) return <div style={{ fontSize: 13, color: "#9a958c", marginTop: 10 }}>Loading recipients…</div>;
-  if (list.length === 0) return <div style={{ fontSize: 13, color: "#9a958c", marginTop: 10 }}>No recipient records.</div>;
+  if (list === null) return <div style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 12 }}>Loading recipients…</div>;
+  if (list.length === 0) return <div style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 12 }}>No recipient records.</div>;
 
   return (
-    <div style={{ marginTop: 12, borderTop: "1px solid #F0EEE9", paddingTop: 10, maxHeight: 320, overflowY: "auto" }}>
+    <div style={{ marginTop: 14, borderTop: "1px solid var(--border-soft)", paddingTop: 6, maxHeight: 320, overflowY: "auto" }}>
       {list.map((r, i) => {
         const isSched = r.status === "scheduled";
         const when = isSched && r.scheduled_at ? r.scheduled_at : r.created_at;
         const timeLabel = when ? `${isSched ? "scheduled for" : "sent"} ${new Date(when).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}` : "";
         return (
-          <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: "1px solid #F5F5F5", fontSize: 13 }}>
+          <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid var(--border-soft)", fontSize: 13 }}>
             <div style={{ minWidth: 0, overflow: "hidden" }}>
-              <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--ink)" }}>
                 {r.conversation?.name || (r.conversation?.wa_phone ? "+" + r.conversation.wa_phone : "-")}
               </div>
-              {timeLabel && <div style={{ fontSize: 11, color: isSched ? "#1a73e8" : "#9a958c", marginTop: 1 }}>{timeLabel}</div>}
+              {timeLabel && <div style={{ fontSize: 11.5, color: isSched ? "var(--blue)" : "var(--ink-3)", marginTop: 1 }}>{timeLabel}</div>}
             </div>
-            <span style={{ ...statusPill(r.status), flexShrink: 0, marginLeft: 10 }}>{r.status || "-"}</span>
+            <RecipientStatus status={r.status} />
           </div>
         );
       })}
@@ -152,14 +158,20 @@ function Recipients({ campaignId }: { campaignId: string }) {
   );
 }
 
-function statusPill(status: string | null): React.CSSProperties {
+// Per-recipient status as an outline badge, tinted by the delivery state.
+function RecipientStatus({ status }: { status: string | null }) {
   const map: Record<string, string> = {
-    read: "#1a73e8", delivered: "#137333", sent: "#137333", queued: "#9a6700", accepted: "#9a6700",
-    scheduled: "#1a73e8", failed: "#b00020", undelivered: "#b00020", canceled: "#6B6862",
+    read: "var(--blue)", delivered: "var(--green-ink)", sent: "var(--green-ink)", queued: "var(--amber-ink)", accepted: "var(--amber-ink)",
+    scheduled: "var(--blue)", failed: "var(--red-ink)", undelivered: "var(--red-ink)", canceled: "var(--ink-3)",
   };
-  const c = map[status || ""] || "#6B6862";
-  return { fontSize: 11, color: c, border: `1px solid ${c}`, borderRadius: 12, padding: "1px 8px", textTransform: "uppercase", letterSpacing: 0.5 };
+  const c = map[status || ""] || "var(--ink-3)";
+  return (
+    <span className="badge" style={{ color: c, borderColor: c, background: "transparent", flexShrink: 0, marginLeft: 10 }}>
+      {status || "-"}
+    </span>
+  );
 }
+
 // Honest, at-a-glance coverage from real WhatsApp receipts (NOT the rollup
 // counters, which drift). Of everyone we meant to message: how many reached a
 // handset, how many are still in flight, how many failed, how many never sent.
@@ -180,12 +192,12 @@ function reach(c: Campaign, f: Funnel | undefined) {
 // Status the user can trust: an old "completed" run that never reached everyone
 // is shown as "Incomplete", so the label matches reality.
 function displayStatus(c: Campaign, f: Funnel | undefined): { label: string; color: string } {
-  if (c.status === "scheduled") return { label: "Scheduled", color: "#1a73e8" };
-  if (c.status === "sending") return { label: "Sending", color: "#9a6700" };
-  if (c.status === "canceled") return { label: "Canceled", color: "#6B6862" };
+  if (c.status === "scheduled") return { label: "Scheduled", color: "var(--blue)" };
+  if (c.status === "sending") return { label: "Sending", color: "var(--amber-ink)" };
+  if (c.status === "canceled") return { label: "Canceled", color: "var(--ink-3)" };
   if (c.status === "incomplete" || (c.status === "completed" && reach(c, f).notSent > 0))
-    return { label: "Incomplete", color: "#c1571f" };
-  return { label: "Completed", color: "#137333" };
+    return { label: "Incomplete", color: "var(--amber-ink)" };
+  return { label: "Completed", color: "var(--green-ink)" };
 }
 function Coverage({ c, f }: { c: Campaign; f: Funnel | undefined }) {
   const r = reach(c, f);
@@ -198,25 +210,25 @@ function Coverage({ c, f }: { c: Campaign; f: Funnel | undefined }) {
       </span>
     ) : null;
   return (
-    <div style={{ marginTop: 12 }}>
-      <div style={{ fontSize: 13, marginBottom: 7 }}>
-        <b style={{ fontSize: 19, color: "#141414" }}>{r.delivered.toLocaleString()}</b>
-        <span style={{ color: "#9a958c" }}> of {r.total.toLocaleString()} reached</span>
-        {r.delivered > 0 && <span style={{ color: "#9a958c" }}> · {r.deliveryRate}%</span>}
+    <div style={{ marginTop: 14 }}>
+      <div style={{ fontSize: 13, marginBottom: 8 }}>
+        <b style={{ fontSize: 19, color: "var(--ink)" }}>{r.delivered.toLocaleString()}</b>
+        <span style={{ color: "var(--ink-3)" }}> of {r.total.toLocaleString()} reached</span>
+        {r.delivered > 0 && <span style={{ color: "var(--ink-3)" }}> · {r.deliveryRate}%</span>}
       </div>
-      <div style={{ display: "flex", height: 9, borderRadius: 6, overflow: "hidden", background: "#EDEBE7" }}>
-        <div style={{ width: w(r.delivered), background: "#137333" }} />
-        <div style={{ width: w(r.scheduled), background: "#1a73e8" }} />
-        <div style={{ width: w(r.pending), background: "#e0a106" }} />
-        <div style={{ width: w(r.failed), background: "#c0341d" }} />
+      <div style={{ display: "flex", height: 9, borderRadius: 20, overflow: "hidden", background: "var(--chip)" }}>
+        <div style={{ width: w(r.delivered), background: "var(--green-dot)" }} />
+        <div style={{ width: w(r.scheduled), background: "var(--blue)" }} />
+        <div style={{ width: w(r.pending), background: "var(--amber-dot)" }} />
+        <div style={{ width: w(r.failed), background: "var(--red)" }} />
       </div>
-      <div style={{ display: "flex", gap: 14, marginTop: 7, fontSize: 12, color: "#6B6862", flexWrap: "wrap" }}>
-        <Legend n={r.delivered} label="delivered" color="#137333" />
-        <Legend n={r.read} label="read" color="#0b6e2e" />
-        <Legend n={r.scheduled} label="scheduled" color="#1a73e8" />
-        <Legend n={r.pending} label="pending" color="#e0a106" />
-        <Legend n={r.failed} label="failed" color="#c0341d" />
-        <Legend n={r.notSent} label="not sent" color="#b8b2a8" />
+      <div style={{ display: "flex", gap: 14, marginTop: 8, fontSize: 12, color: "var(--ink-2)", flexWrap: "wrap" }}>
+        <Legend n={r.delivered} label="delivered" color="var(--green-dot)" />
+        <Legend n={r.read} label="read" color="var(--green-ink)" />
+        <Legend n={r.scheduled} label="scheduled" color="var(--blue)" />
+        <Legend n={r.pending} label="pending" color="var(--amber-dot)" />
+        <Legend n={r.failed} label="failed" color="var(--red)" />
+        <Legend n={r.notSent} label="not sent" color="var(--border-2)" />
       </div>
     </div>
   );
@@ -235,15 +247,14 @@ function DripTracker({ c }: { c: Campaign }) {
   const done = now >= end;
   const remainLabel = remainMin >= 60 ? `~${Math.floor(remainMin / 60)}h ${remainMin % 60}m left` : `~${remainMin} min left`;
   return (
-    <div style={{ marginTop: 12 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontSize: 12, color: "#1a73e8", marginBottom: 5 }}>
+    <div style={{ marginTop: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontSize: 12, color: "var(--blue)", marginBottom: 6 }}>
         <span>{done ? "Finishing up…" : remainLabel}{c.scheduled > 0 ? ` · ${c.scheduled} still scheduled` : ""}</span>
         <span>finishes {new Date(end).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
       </div>
-      <div style={{ height: 6, borderRadius: 6, background: "#E7EEFB", overflow: "hidden" }}>
-        <div style={{ height: "100%", width: `${pct}%`, background: "#1a73e8", transition: "width .6s linear" }} />
+      <div className="prog-bar" style={{ width: "100%", background: "var(--blue-tint)" }}>
+        <div className="prog-fill" style={{ width: `${pct}%`, background: "var(--blue)", transition: "width .6s linear" }} />
       </div>
     </div>
   );
 }
-const linkBtn: React.CSSProperties = { background: "none", border: "none", padding: 0, cursor: "pointer", fontSize: 13, color: "#137333", textDecoration: "underline" };

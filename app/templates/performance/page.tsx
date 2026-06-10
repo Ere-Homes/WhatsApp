@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { Icon, IC, PageHead, Skeleton } from "@/lib/ui";
 
 export default function TemplatePerformance() {
   const [tpls, setTpls] = useState<any[]>([]);
@@ -17,61 +18,93 @@ export default function TemplatePerformance() {
     .filter((t) => t.s && t.s.sent > 0)
     .sort((a, b) => b.s.sent - a.s.sent);
 
-  return (
-    <div style={{ maxWidth: 880, margin: "0 auto", padding: "28px 20px" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
-        <h1 style={{ fontFamily: "Georgia, serif", fontWeight: 400, fontSize: 24, margin: "0 0 6px" }}>Template performance</h1>
-        <Link href="/templates" style={{ fontSize: 13, color: "#6B6862", textDecoration: "none", whiteSpace: "nowrap" }}>← Templates</Link>
-      </div>
-      <p style={{ color: "#6B6862", fontSize: 14, marginTop: 0, marginBottom: 20 }}>
-        How each template actually performs (last 90 days), with the biggest funnel leak and
-        the next action for each. Reply rate = share of recipients who messaged back.
-      </p>
+  // Headline rollups across all sent templates (pure derived view, no extra fetch).
+  const totalSent = rows.reduce((n, t) => n + (t.s.sent || 0), 0);
+  const totalReplied = rows.reduce((n, t) => n + (t.s.replied || 0), 0);
+  const avgReply = totalSent ? Math.round((totalReplied / totalSent) * 100) : 0;
 
-      {stats === null && <div style={{ color: "#6B6862" }}>Loading…</div>}
+  return (
+    <div className="page"><div className="maxw">
+      <PageHead
+        title="Template performance"
+        sub="How each template actually performs (last 90 days), with the biggest funnel leak and the next action for each. Reply rate = share of recipients who messaged back."
+      >
+        <Link href="/templates" className="btn btn-sec"><Icon d={IC.tmpl} s={15} />Templates</Link>
+      </PageHead>
+
+      {stats === null && <Skeleton rows={6} />}
+
       {stats && rows.length === 0 && (
-        <div style={{ color: "#9a958c", background: "#fff", border: "1px solid #E4E1DB", borderRadius: 12, padding: 24, textAlign: "center" }}>
-          No template sends yet. Run a <Link href="/campaigns" style={{ color: "#137333" }}>campaign</Link> or send a template from the inbox.
+        <div className="empty">
+          <div className="ei"><Icon d={IC.trend} s={22} /></div>
+          <h4>No template sends yet</h4>
+          <div>Run a <Link href="/campaigns" style={{ color: "var(--blue)", fontWeight: 600 }}>campaign</Link> or send a template from the inbox.</div>
         </div>
       )}
 
       {rows.length > 0 && (
-        <div style={{ background: "#fff", border: "1px solid #E4E1DB", borderRadius: 12, overflow: "hidden" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr", gap: 8, padding: "12px 16px", borderBottom: "1px solid #E4E1DB", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, color: "#9a958c" }}>
-            <span>Template</span><span style={{ textAlign: "right" }}>Sent</span><span style={{ textAlign: "right" }}>Delivered</span><span style={{ textAlign: "right" }}>Read</span><span style={{ textAlign: "right" }}>Reply</span>
+        <>
+          <div className="kpis k4">
+            <div className="kpi"><div className="kl">Templates tracked</div><div className="kv">{rows.length}</div><div className="ks">sent · 90d</div></div>
+            <div className="kpi"><div className="kl">Total sent</div><div className="kv">{totalSent.toLocaleString()}</div><div className="ks">last 90 days</div></div>
+            <div className="kpi"><div className="kl">Replies</div><div className="kv">{totalReplied.toLocaleString()}</div><div className="ks">messaged back</div></div>
+            <div className="kpi"><div className="kl">Avg reply rate</div><div className="kv">{avgReply}%</div><div className="ks">across templates</div></div>
           </div>
-          {rows.map((t) => {
-            const d = diagnose(t.s);
-            return (
-              <div key={t.sid} style={{ borderBottom: "1px solid #F0EEE9" }}>
-                <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr", gap: 8, padding: "14px 16px 6px", alignItems: "center", fontSize: 14 }}>
-                  <span style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</span>
-                  <span style={{ textAlign: "right", fontWeight: 600 }}>{t.s.sent}</span>
-                  <Rate pct={t.s.deliveryRate} />
-                  <Rate pct={t.s.readRate} good={60} />
-                  <Rate pct={t.s.replyRate} good={10} mid={3} />
-                </div>
-                <div style={{ display: "flex", gap: 8, alignItems: "baseline", padding: "0 16px 14px", fontSize: 12.5 }}>
-                  <span style={{ flexShrink: 0, fontWeight: 700, color: d.color }}>{d.leak}</span>
-                  <span style={{ color: "#3a3a3a" }}>{d.action}</span>
-                </div>
-              </div>
-            );
-          })}
-          <div style={{ fontSize: 11, color: "#9a958c", padding: "10px 16px" }}>
+
+          <div className="bar" style={{ borderBottom: "none" }}>
+            <div className="card-t" style={{ padding: "0 0 11px" }}>Funnel by template</div>
+          </div>
+          <div className="panel" style={{ borderTop: "1px solid var(--border)", borderRadius: "var(--r-lg)" }}>
+            <table className="ttable">
+              <thead>
+                <tr>
+                  <th>Template</th>
+                  <th style={{ textAlign: "right" }}>Sent</th>
+                  <th style={{ textAlign: "right" }}>Delivered</th>
+                  <th style={{ textAlign: "right" }}>Read</th>
+                  <th style={{ textAlign: "right" }}>Reply</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((t) => {
+                  const d = diagnose(t.s);
+                  return (
+                    <tr className="norow" key={t.sid}>
+                      <td>
+                        <div className="cell-name">
+                          <span className="tkind text"><Icon d={IC.tmpl} s={16} /></span>
+                          <div className="nm">
+                            <div className="t" title={t.name}>{t.name}</div>
+                            <div className="p" style={{ color: d.color, fontWeight: 600 }}>
+                              <b>{d.leak}.</b> {d.action}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td style={{ textAlign: "right", fontWeight: 600 }}>{t.s.sent.toLocaleString()}</td>
+                      <td style={{ textAlign: "right" }}><Rate pct={t.s.deliveryRate} /></td>
+                      <td style={{ textAlign: "right" }}><Rate pct={t.s.readRate} good={60} /></td>
+                      <td style={{ textAlign: "right" }}><Rate pct={t.s.replyRate} good={10} mid={3} /></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="hint" style={{ marginTop: 10 }}>
             Delivered/Read come from WhatsApp receipts; reply rate counts conversations that messaged back after the send.
             Benchmarks: delivery 90%+, read 60%+ (of delivered), reply 3%+ (good 10%+).
           </div>
-        </div>
+        </>
       )}
-    </div>
+    </div></div>
   );
 }
 
 // Color a percentage: green if at/above `good`, amber above `mid`, grey below.
 function Rate({ pct, good = 90, mid = 50 }: { pct: number; good?: number; mid?: number }) {
-  const color = pct >= good ? "#137333" : pct >= mid ? "#9a6700" : "#6B6862";
-  return <span style={{ textAlign: "right", color, fontWeight: 600 }}>{pct}%</span>;
+  const color = pct >= good ? "var(--green-ink)" : pct >= mid ? "var(--amber-ink)" : "var(--ink-3)";
+  return <span style={{ color, fontWeight: 600 }}>{pct}%</span>;
 }
 
 // Find the first funnel stage that under-performs and return the playbook action for it.
@@ -79,12 +112,12 @@ function Rate({ pct, good = 90, mid = 50 }: { pct: number; good?: number; mid?: 
 function diagnose(s: any): { leak: string; color: string; action: string } {
   const readOfDelivered = s.delivered ? Math.round((s.read / s.delivered) * 100) : 0;
   if (s.deliveryRate < 90)
-    return { leak: "Delivery low", color: "#b3261e", action: "Likely dead numbers or sender health. Send to clean mobiles only and warm up the number within daily caps." };
+    return { leak: "Delivery low", color: "var(--red-ink)", action: "Likely dead numbers or sender health. Send to clean mobiles only and warm up the number within daily caps." };
   if (readOfDelivered < 50)
-    return { leak: "Read low", color: "#9a6700", action: "Timing or sender trust. Send 10:00-13:00 or 17:00-20:00 GST, use an image header and the brand name." };
+    return { leak: "Read low", color: "var(--amber-ink)", action: "Timing or sender trust. Send 10:00-13:00 or 17:00-20:00 GST, use an image header and the brand name." };
   if (s.replyRate < 3)
-    return { leak: "Reply low", color: "#9a6700", action: "Weak hook, CTA or targeting. Front-load a value hook, keep one quick-reply CTA, tighten the audience." };
+    return { leak: "Reply low", color: "var(--amber-ink)", action: "Weak hook, CTA or targeting. Front-load a value hook, keep one quick-reply CTA, tighten the audience." };
   if (s.replied > 0)
-    return { leak: "Capture replies", color: "#137333", action: "Engagement is healthy. Make sure replies route to Pipedrive and an agent calls within minutes." };
-  return { leak: "Healthy", color: "#137333", action: "Funnel looks good. Scale within warm-up caps and test one change at a time." };
+    return { leak: "Capture replies", color: "var(--green-ink)", action: "Engagement is healthy. Make sure replies route to Pipedrive and an agent calls within minutes." };
+  return { leak: "Healthy", color: "var(--green-ink)", action: "Funnel looks good. Scale within warm-up caps and test one change at a time." };
 }

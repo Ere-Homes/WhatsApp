@@ -14,6 +14,7 @@ const NAV = [
   { id: "Campaigns", href: "/campaigns", icon: IC.camp },
   { id: "Automation", href: "/automation", icon: IC.bolt },
   { id: "Insights", href: "/insights", icon: IC.insights },
+  { id: "Logs", href: "/logs", icon: IC.clock },
   { id: "Billing", href: "/billing", icon: IC.billing },
 ];
 

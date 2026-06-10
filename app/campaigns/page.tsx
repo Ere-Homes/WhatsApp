@@ -312,8 +312,10 @@ export default function Campaigns() {
     if (!tplSid) return setErr("Pick an approved template.");
     if (numbers.length === 0) return setErr("Add at least one recipient.");
     if (!optIn) return setErr("Please confirm these recipients opted in to WhatsApp messages.");
+    // Collect every heads-up into ONE final confirm instead of stacking dialogs.
+    const notes: string[] = [];
     if (sentToday != null && sentToday + numbers.length > DAILY_CAP) {
-      if (!confirm(`Heads up: this would push you to ${sentToday + numbers.length} sends in 24h, over the recommended ${DAILY_CAP} cap for a ramping number. Sending too much too fast can drop your quality rating and pause templates. Continue anyway?`)) return;
+      notes.push(`⚠ Over the ${DAILY_CAP}/day cap for a ramping number (puts you at ${sentToday + numbers.length} in 24h) — can hurt quality rating.`);
     }
 
     // Validate timing per mode
@@ -350,7 +352,7 @@ export default function Campaigns() {
           const before = sendNumbers.length;
           sendNumbers = sendNumbers.filter((p) => !reached.has(p.replace(/[^0-9]/g, "")));
           const dropped = before - sendNumbers.length;
-          if (dropped > 0 && !confirm(`${dropped} of these already received a WhatsApp from ERE and will be skipped (no double-messaging). Send to the remaining ${sendNumbers.length}?`)) return;
+          if (dropped > 0) notes.push(`${dropped} already received a WhatsApp from ERE — skipped (no double-messaging).`);
         }
       } catch { /* best-effort: if the lookup fails, fall back to sending to all */ }
     }
@@ -373,12 +375,19 @@ export default function Campaigns() {
       return { phone: p, vars: v, body: renderLabel(tpl, v) };
     });
 
-    // Empty variables are the #1 cause of 63024 — warn before sending.
-    if (blanks > 0 && !confirm(`Heads up: ${blanks} variable value(s) are blank across your recipients (missing CRM data and no fallback). WhatsApp rejects blank variables (error 63024). Set a fallback for each variable, or continue and those sends may fail. Continue anyway?`)) return;
+    // Empty variables are the #1 cause of 63024 — note it (don't stack a dialog).
+    if (blanks > 0) notes.push(`⚠ ${blanks} variable value(s) are blank — WhatsApp may reject these (error 63024).`);
 
     const calls = buildPlan(recipients); // [{ batch, sendAt? }]
     const verb = mode === "now" ? "send now" : mode === "later" ? `schedule for ${new Date(sendAt).toLocaleString()}` : `drip ${perBatch} every ${humanInterval(intervalMin)} (finishes ${drip?.finishLabel})`;
-    if (!confirm(`This will ${verb} to ${numbers.length} recipient(s) using "${tpl?.name}". Blacklisted contacts are skipped. Continue?`)) return;
+    // ONE confirmation that rolls up the action + every heads-up. Shows the REAL
+    // count that will send (sendNumbers, after skips), not the raw uploaded total.
+    const summary = [
+      `This will ${verb} to ${sendNumbers.length} recipient(s) using "${tpl?.name}".`,
+      ...notes,
+      "Blacklisted contacts are skipped. Continue?",
+    ].join("\n\n");
+    if (!confirm(summary)) return;
 
     const label = renderLabel(tpl, vars);
     const finishAtIso =
@@ -593,10 +602,11 @@ export default function Campaigns() {
 
         {source === "manual" && (
           <>
-            <textarea value={raw} onChange={(e) => setRaw(e.target.value)} rows={5} placeholder="Paste numbers, one per line (e.g. +9715XXXXXXXX)" style={{ ...input, resize: "vertical" }} />
+            <textarea value={raw} onChange={(e) => setRaw(e.target.value)} rows={pasted ? 3 : 5} placeholder="Paste numbers, one per line (e.g. +9715XXXXXXXX) — or a CSV with a phone,first_name,… header" style={{ ...input, resize: "vertical", fontFamily: pasted ? "ui-monospace, Menlo, monospace" : undefined, fontSize: pasted ? 12 : 14 }} />
             <label style={{ fontSize: 13, color: "#6B6862", cursor: "pointer" }}>
               <input type="file" accept=".csv,text/csv,text/plain" onChange={onFile} style={{ fontSize: 13 }} />
             </label>
+            {pasted && <RecipientTable records={pasted.records} valueCols={pasted.valueCols} tplVars={tplVars} />}
           </>
         )}
 
@@ -813,6 +823,51 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     <div style={{ background: "#fff", border: "1px solid #E4E1DB", borderRadius: 12, padding: 18, marginBottom: 14 }}>
       <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10, letterSpacing: 0.3 }}>{title}</div>
       {children}
+    </div>
+  );
+}
+
+// Parsed-CSV preview as a real table (phone + columns), so the user sees a clean
+// grid instead of raw comma text. Caps the visible rows to keep the box compact;
+// every row is scrollable. A column header shows →{{n}} when it feeds a template
+// variable, so personalization wiring is visible at a glance.
+function RecipientTable({ records, valueCols, tplVars }: { records: any[]; valueCols: string[]; tplVars: string[] }) {
+  const cap = 100;
+  const shown = records.slice(0, cap);
+  const nicely = (s: string) => s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const cellTd: React.CSSProperties = { padding: "7px 12px", borderBottom: "1px solid #F0EEE9", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 220 };
+  const headTh: React.CSSProperties = { padding: "8px 12px", textAlign: "left", fontSize: 11, letterSpacing: 0.4, textTransform: "uppercase", color: "#6B6862", fontWeight: 600, background: "#F7F6F4", borderBottom: "1px solid #E4E1DB", position: "sticky", top: 0, whiteSpace: "nowrap" };
+  return (
+    <div style={{ marginTop: 12, border: "1px solid #E4E1DB", borderRadius: 10, overflow: "hidden" }}>
+      <div style={{ maxHeight: 320, overflow: "auto" }}>
+        <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 13 }}>
+          <thead>
+            <tr>
+              <th style={{ ...headTh, width: 34, textAlign: "right", color: "#B5B0A6" }}>#</th>
+              <th style={headTh}>Phone</th>
+              {valueCols.map((c, i) => (
+                <th key={c} style={headTh}>
+                  {nicely(c)}
+                  {tplVars[i] && <span style={{ marginLeft: 6, color: "#137333", fontWeight: 500, textTransform: "none", letterSpacing: 0 }}>{`→{{${tplVars[i]}}}`}</span>}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {shown.map((r, i) => (
+              <tr key={i}>
+                <td style={{ ...cellTd, textAlign: "right", color: "#B5B0A6", fontVariantNumeric: "tabular-nums" }}>{i + 1}</td>
+                <td style={{ ...cellTd, fontFamily: "ui-monospace, Menlo, monospace", color: "#3a3a3a" }}>+{String(r.phone).replace(/[^0-9]/g, "")}</td>
+                {valueCols.map((c) => <td key={c} style={cellTd} title={r[c] || ""}>{r[c] || <span style={{ color: "#C9C4BA" }}>—</span>}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ padding: "8px 12px", background: "#FAF9F7", borderTop: "1px solid #E4E1DB", fontSize: 12, color: "#6B6862", display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+        <span><b style={{ color: "#137333" }}>{records.length}</b> recipient{records.length === 1 ? "" : "s"}{valueCols.length > 0 && <> · {valueCols.length} column{valueCols.length === 1 ? "" : "s"}</>}</span>
+        {records.length > cap && <span>showing first {cap}</span>}
+      </div>
     </div>
   );
 }

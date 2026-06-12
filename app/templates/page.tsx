@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Icon, IC, Badge, PageHead, Skeleton, CHECK2, sm, kindOf, TYPE_LABEL, LANG_LABEL, isRTL, renderVars, fmtUpdated, LANGUAGES } from "@/lib/ui";
-import { SEED_TEMPLATES, type Tpl } from "@/lib/fixtures";
+import { type Tpl } from "@/lib/fixtures";
 
 type Btn = { type: "url" | "phone" | "quick-reply"; title: string; url?: string; phone?: string };
 
@@ -446,8 +446,9 @@ const FILTERS = [
 ];
 
 export default function Templates() {
-  const [tpls, setTpls] = useState<Tpl[]>(SEED_TEMPLATES);
+  const [tpls, setTpls] = useState<Tpl[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [composer, setComposer] = useState(false);
   const [seed, setSeed] = useState<Seed>(null);
   const [active, setActive] = useState<Tpl | null>(null);
@@ -458,14 +459,17 @@ export default function Templates() {
 
   async function load() {
     setLoading(true);
+    setError(null);
     try {
       const res = await fetch("/api/templates");
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed");
-      if ((data.templates || []).length) setTpls(data.templates);
-      else setTpls(SEED_TEMPLATES);
-    } catch {
-      setTpls(SEED_TEMPLATES); // demo fallback
+      if (!res.ok) throw new Error(data.error || "Failed to load templates");
+      // Show exactly what Twilio returns - never substitute demo data, which
+      // would look like templates nobody created (e.g. when the account is down).
+      setTpls(data.templates || []);
+    } catch (e: any) {
+      setTpls([]);
+      setError(e?.message || "Couldn't reach Twilio. Check the connection and try again.");
     } finally {
       setLoading(false);
     }
@@ -562,7 +566,11 @@ export default function Templates() {
         </div>
 
         <div className="panel">
-          {loading ? <Skeleton rows={6} /> : filtered.length > 0 ? (
+          {loading ? <Skeleton rows={6} /> : error ? (
+            <div className="empty"><div className="ei"><Icon d={IC.refresh} s={22} /></div><h4>Couldn&apos;t load templates</h4><div>{error}</div><button className="btn btn-sec" style={{ marginTop: 12 }} onClick={load}><Icon d={IC.refresh} s={15} />Try again</button></div>
+          ) : tpls.length === 0 ? (
+            <div className="empty"><div className="ei"><Icon d={IC.plus} s={22} /></div><h4>No templates yet</h4><div>Create your first WhatsApp template and submit it to Meta for approval.</div></div>
+          ) : filtered.length > 0 ? (
             <table className="ttable">
               <thead><tr><th>Template</th><th>Type</th><th>Category</th><th>Language</th><th>Content</th><th>Status</th><th>Updated</th><th></th></tr></thead>
               <tbody>{filtered.map((t) => <Row key={t.sid} t={t} selected={active?.sid === t.sid} onOpen={setActive} />)}</tbody>

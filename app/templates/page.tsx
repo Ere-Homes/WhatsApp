@@ -457,9 +457,10 @@ export default function Templates() {
   const [cat, setCat] = useState("all");
   const [q, setQ] = useState("");
 
-  async function load() {
-    setLoading(true);
-    setError(null);
+  // background=true => quiet refresh (no spinner, keep current rows on a transient
+  // error) so the 20s poll never flashes the list or blanks it on a blip.
+  async function load(background = false) {
+    if (!background) { setLoading(true); setError(null); }
     try {
       const res = await fetch("/api/templates");
       const data = await res.json();
@@ -467,14 +468,24 @@ export default function Templates() {
       // Show exactly what Twilio returns - never substitute demo data, which
       // would look like templates nobody created (e.g. when the account is down).
       setTpls(data.templates || []);
+      if (background) setError(null);
     } catch (e: any) {
-      setTpls([]);
-      setError(e?.message || "Couldn't reach Twilio. Check the connection and try again.");
+      if (!background) {
+        setTpls([]);
+        setError(e?.message || "Couldn't reach Twilio. Check the connection and try again.");
+      }
+      // a background blip keeps the last good list rather than wiping it
     } finally {
-      setLoading(false);
+      if (!background) setLoading(false);
     }
   }
-  useEffect(() => { load(); }, []);
+  // Initial load + keep approval statuses live (received -> pending -> approved)
+  // without a manual reload. Pause while the tab is hidden to avoid wasted calls.
+  useEffect(() => {
+    load();
+    const poll = setInterval(() => { if (!document.hidden) load(true); }, 20000);
+    return () => clearInterval(poll);
+  }, []);
 
   const matchStatus = (st: string, f: string) => (f === "all" ? true : f === "pending" ? st === "pending" || st === "received" : st === f);
   const counts = useMemo(() => {
@@ -538,7 +549,7 @@ export default function Templates() {
       <div className="maxw">
         <PageHead title="Content templates" sub="Pre-approved WhatsApp messages your team sends to owners and buyers. Compose, submit to Meta, and track approval.">
           <Link className="btn btn-sec" href="/templates/performance"><Icon d={IC.insights} s={15} />Performance</Link>
-          <button className="btn btn-sec" onClick={load}><Icon d={IC.refresh} s={15} />{loading ? "Loading…" : "Refresh"}</button>
+          <button className="btn btn-sec" onClick={() => load()}><Icon d={IC.refresh} s={15} />{loading ? "Loading…" : "Refresh"}</button>
           <button className="btn btn-primary" onClick={() => { setSeed(null); setComposer(true); }}><Icon d={IC.plus} s={16} />Create new</button>
         </PageHead>
 
@@ -567,7 +578,7 @@ export default function Templates() {
 
         <div className="panel">
           {loading ? <Skeleton rows={6} /> : error ? (
-            <div className="empty"><div className="ei"><Icon d={IC.refresh} s={22} /></div><h4>Couldn&apos;t load templates</h4><div>{error}</div><button className="btn btn-sec" style={{ marginTop: 12 }} onClick={load}><Icon d={IC.refresh} s={15} />Try again</button></div>
+            <div className="empty"><div className="ei"><Icon d={IC.refresh} s={22} /></div><h4>Couldn&apos;t load templates</h4><div>{error}</div><button className="btn btn-sec" style={{ marginTop: 12 }} onClick={() => load()}><Icon d={IC.refresh} s={15} />Try again</button></div>
           ) : tpls.length === 0 ? (
             <div className="empty"><div className="ei"><Icon d={IC.plus} s={22} /></div><h4>No templates yet</h4><div>Create your first WhatsApp template and submit it to Meta for approval.</div></div>
           ) : filtered.length > 0 ? (

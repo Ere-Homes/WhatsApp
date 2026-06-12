@@ -65,7 +65,9 @@ export async function POST(req: NextRequest) {
     const alreadyInCampaign = new Set<string>();
     for (let from = 0; ; from += 1000) {
       const { data } = await db.from("messages").select("conversation, status").eq("campaign", campaignId).range(from, from + 999);
-      for (const m of data || []) if ((m as any).status !== "failed") alreadyInCampaign.add((m as any).conversation);
+      // failed/canceled rows are re-queueable on a re-send; everything else
+      // (scheduled/sent/delivered/...) means this contact is already handled.
+      for (const m of data || []) if (!["failed", "canceled"].includes((m as any).status)) alreadyInCampaign.add((m as any).conversation);
       if (!data || data.length < 1000) break;
     }
 

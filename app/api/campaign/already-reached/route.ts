@@ -33,14 +33,18 @@ export async function POST(req: NextRequest) {
       const ids = Array.from(idToPhone.keys());
       if (!ids.length) continue;
 
-      // A contact is "reached" if any outbound message to them was delivered or read.
+      // "Reached" = any outbound that left our hands toward this contact: handed
+      // to Twilio (queued/accepted/sent) or confirmed (delivered/read). The
+      // dispatcher records the Twilio creation status and relies on async
+      // callbacks to advance it, so counting only delivered/read would let a
+      // just-sent contact look "not reached" and get double-messaged on a re-send.
       for (let j = 0; j < ids.length; j += 500) {
         const idSlice = ids.slice(j, j + 500);
         const { data: msgs } = await db
           .from("messages")
           .select("conversation")
           .eq("direction", "out")
-          .in("status", ["delivered", "read"])
+          .in("status", ["queued", "accepted", "sent", "delivered", "read"])
           .in("conversation", idSlice);
         for (const m of msgs || []) {
           const p = idToPhone.get((m as any).conversation);

@@ -87,8 +87,19 @@ export default function Inbox() {
 
   async function loadConvs() {
     try {
-      const { data, error } = await sb.current.from("conversations").select("*").order("last_at", { ascending: false });
-      if (error || !data || data.length === 0) throw new Error("no live data");
+      // Recent window (PostgREST caps a plain select at ~1000 rows) PLUS every
+      // actionable lead (hot/warm or unread) even if older than that window, so
+      // the Hot and Unread tabs never drop a lead that's past the recent 1000.
+      const [recent, priority] = await Promise.all([
+        sb.current.from("conversations").select("*").order("last_at", { ascending: false }).limit(1000),
+        sb.current.from("conversations").select("*").or("lead_status.eq.hot,lead_status.eq.warm,unread.eq.true").limit(1000),
+      ]);
+      if (recent.error) throw new Error("no live data");
+      const seen = new Set<string>();
+      const data = [...(recent.data || []), ...(priority.data || [])]
+        .filter((c: any) => (seen.has(c.id) ? false : (seen.add(c.id), true)))
+        .sort((a: any, b: any) => new Date(b.last_at || 0).getTime() - new Date(a.last_at || 0).getTime());
+      if (data.length === 0) throw new Error("no live data");
       const mapped: UIConv[] = data.map((c: any) => ({
         id: c.id, name: c.name || "+" + c.wa_phone, phone: formatPhone(c.wa_phone), waPhone: c.wa_phone,
         tag: tagOf(c.lead_status), lead: c.lead_status || "new", unread: c.unread ? 1 : 0, time: hhmm(c.last_at),

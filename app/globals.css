@@ -494,12 +494,23 @@ select.input{appearance:none;cursor:pointer;background-image:url("data:image/svg
   .thread{padding:14px 12px;}
   .th-back{display:grid;margin-left:-4px;}
 }
+@media (max-width:560px){
+  /* Two-up key/value detail grids stack so values aren't squeezed. */
+  .kv2{grid-template-columns:1fr;}
+}
 @media (max-width:430px){
   .kpis,.kpis.k4,.kpis.k5{gap:8px;}
   .kpi{padding:13px 13px;}
   .kpi .kv{font-size:23px;}
   .btn{padding:0 13px;}
+  .page{padding:16px 12px 44px;}
+  .h1{font-size:20px;}
 }
+/* Defensive: a long phone number / URL / token wraps instead of forcing a
+   horizontal scroll on a narrow screen. The phone mock-up never exceeds its
+   column. (Tables keep their own horizontal scroll inside .panel.) */
+.msg-bubble,.page-sub,.cell-name .nm{overflow-wrap:anywhere;}
+.phone{max-width:100%;}
 
 /* ───── Touch devices: bigger tap targets + 16px inputs (stops iOS zoom-on-focus) ───── */
 @media (pointer:coarse){

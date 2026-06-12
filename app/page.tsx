@@ -110,14 +110,21 @@ export default function Dashboard() {
 
       setKpis((k) => {
         const next = { ...k };
-        if (insR.status === "fulfilled" && insR.value?.totals) {
-          const t = insR.value.totals;
-          next.response = typeof t.readRate === "number" && t.outbound ? t.readRate : (t.outbound + t.inbound > 0 ? 0 : null);
-          next.conversations = typeof t.outbound === "number" ? t.outbound + t.inbound : next.conversations;
-        }
+        const t = insR.status === "fulfilled" ? insR.value?.totals : null;
+        if (t && typeof t.outbound === "number") next.conversations = t.outbound + t.inbound;
+        // Replied = distinct contacts who sent us an inbound message in the window.
+        const repliedIds = repliedR.status === "fulfilled"
+          ? new Set<string>((repliedR.value as any)?.conversationIds || [])
+          : null;
+        // Response rate = share of messaged recipients who actually replied — a
+        // real reply rate, NOT the read rate (which is a different metric).
         // Always assign (even 0) so a stale value from a wider window can't linger.
-        if (repliedR.status === "fulfilled" && hotR.status === "fulfilled") {
-          const repliedIds = new Set((repliedR.value as any)?.conversationIds || []);
+        if (repliedIds && t) {
+          next.response = t.outbound
+            ? Math.min(100, Math.round((repliedIds.size / t.outbound) * 1000) / 10)
+            : (t.outbound + t.inbound > 0 ? 0 : null);
+        }
+        if (repliedIds && hotR.status === "fulfilled") {
           next.leads = ((hotR.value as any)?.conversations || []).filter((c: any) => repliedIds.has(c.id)).length;
         }
         return next;

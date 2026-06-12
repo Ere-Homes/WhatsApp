@@ -93,7 +93,10 @@ function statusCallbackUrl() {
     (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${cleanEnv(process.env.VERCEL_PROJECT_PRODUCTION_URL)}` : "");
   if (!base) return "";
   const bypass = cleanEnv(process.env.VERCEL_AUTOMATION_BYPASS_SECRET);
-  return `${base}/api/twilio/status${bypass ? `?x-vercel-protection-bypass=${bypass}&x-vercel-set-bypass-cookie=true` : ""}`;
+  // Bypass as a query param only — NOT x-vercel-set-bypass-cookie=true, which
+  // would (a) 307-redirect the callback and (b) let a leaked URL mint a durable
+  // project-wide bypass cookie.
+  return `${base}/api/twilio/status${bypass ? `?x-vercel-protection-bypass=${bypass}` : ""}`;
 }
 
 // Messaging Service SID - required for Twilio's native scheduled sends.

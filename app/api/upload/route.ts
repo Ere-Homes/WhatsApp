@@ -15,12 +15,15 @@ export async function POST(req: NextRequest) {
     const kind = String(form.get("kind") || "card"); // "card" (image only) | "chat" (image + pdf)
     if (!file) return NextResponse.json({ error: "No file provided" }, { status: 400 });
 
-    const isImage = file.type.startsWith("image/");
+    // Allow-list concrete types (NOT a loose image/* prefix). SVG is excluded —
+    // it can carry script and would be stored-XSS from the public bucket.
+    const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+    const isImage = IMAGE_TYPES.includes(file.type);
     const isDoc = file.type === "application/pdf";
     if (kind === "chat") {
-      if (!isImage && !isDoc) return NextResponse.json({ error: "Images or PDF only" }, { status: 400 });
+      if (!isImage && !isDoc) return NextResponse.json({ error: "PNG, JPG, WebP, GIF, or PDF only" }, { status: 400 });
     } else if (!isImage) {
-      return NextResponse.json({ error: "Image files only" }, { status: 400 });
+      return NextResponse.json({ error: "PNG, JPG, WebP, or GIF only" }, { status: 400 });
     }
     // WhatsApp limits: ~5 MB images, ~16 MB documents.
     const max = isImage ? 5 * 1024 * 1024 : 16 * 1024 * 1024;

@@ -2,22 +2,27 @@
 -- Supabase SQL editor, AFTER migration_server_drip.sql and AFTER CRON_SECRET is
 -- set on Vercel and the app is deployed.
 --
--- Before running, replace the two placeholders below:
---   <APP_URL>      e.g. https://wa.erehomes.ae   (use the PRODUCTION custom
---                  domain — the *.vercel.app host may be gated by Vercel SSO)
---   <CRON_SECRET>  the exact value you set for the CRON_SECRET env var on Vercel
+-- There is NO custom domain, so the app is on a *.vercel.app URL which sits
+-- behind Vercel Deployment Protection. We get through it the same way the Twilio
+-- status callback does: the x-vercel-protection-bypass query param. So replace
+-- THREE placeholders below:
+--   <APP_URL>   the production *.vercel.app URL, e.g. https://whatsapp-xyz.vercel.app
+--   <CRON_SECRET>   the value set for the CRON_SECRET env var on Vercel
+--   <BYPASS>    Vercel → Settings → Deployment Protection → "Protection Bypass
+--               for Automation" secret (same one the Twilio callback uses;
+--               it's the VERCEL_AUTOMATION_BYPASS_SECRET env var)
 
 create extension if not exists pg_cron;
 create extension if not exists pg_net;
 
--- Every 5 minutes, POST the dispatcher. It self-secures on the x-cron-secret
--- header, sends whatever drip messages are due, and returns quickly.
+-- Every 5 minutes, POST the dispatcher. The bypass param clears Vercel's edge
+-- protection; the x-cron-secret header is OUR auth inside the route.
 select cron.schedule(
   'whatsapp-drip-dispatch',
   '*/5 * * * *',
   $$
   select net.http_post(
-    url     := '<APP_URL>/api/cron/dispatch',
+    url     := '<APP_URL>/api/cron/dispatch?x-vercel-protection-bypass=<BYPASS>&x-vercel-set-bypass-cookie=true',
     headers := jsonb_build_object('x-cron-secret', '<CRON_SECRET>'),
     timeout_milliseconds := 55000
   );

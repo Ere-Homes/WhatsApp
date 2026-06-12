@@ -41,9 +41,13 @@ export async function GET() {
 
     const funnel: Record<string, any> = {};
     for (const [id, a] of Object.entries(agg)) {
+      // Delivery rate = of messages that actually RESOLVED (delivered or failed),
+      // how many reached a handset. Still-scheduled/queued messages have no receipt
+      // yet, so counting them in the denominator deflates the rate mid-flight.
+      const resolved = a.delivered + a.failed;
       funnel[id] = {
         ...a,
-        deliveryRate: a.sent ? Math.round((a.delivered / a.sent) * 100) : 0,
+        deliveryRate: resolved ? Math.round((a.delivered / resolved) * 100) : 0,
         readRate: a.delivered ? Math.round((a.read / a.delivered) * 100) : 0,
       };
     }

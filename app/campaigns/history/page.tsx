@@ -102,7 +102,7 @@ export default function CampaignHistory() {
 
               <Coverage c={c} f={funnels[c.id]} />
               <FailureReasons f={funnels[c.id]} />
-              <DripTracker c={c} />
+              <DripTracker c={c} f={funnels[c.id]} />
 
               <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
                 <button className="btn btn-sec btn-sm" onClick={() => setOpenId(openId === c.id ? null : c.id)}>
@@ -275,7 +275,7 @@ function FailureReasons({ f }: { f: Funnel | undefined }) {
 // Live progress for a time-spread (drip/scheduled) send still in flight: a bar
 // over the send window plus a countdown, so you can watch it finish instead of
 // blindly waiting. Re-renders every second via the page's heartbeat tick.
-function DripTracker({ c }: { c: Campaign }) {
+function DripTracker({ c, f }: { c: Campaign; f: Funnel | undefined }) {
   if (!(c.status === "scheduled" || c.status === "sending") || !c.finish_at) return null;
   const start = new Date(c.created_at).getTime();
   const end = new Date(c.finish_at).getTime();
@@ -285,10 +285,14 @@ function DripTracker({ c }: { c: Campaign }) {
   const remainMin = Math.max(0, Math.round((end - now) / 60000));
   const done = now >= end;
   const remainLabel = remainMin >= 60 ? `~${Math.floor(remainMin / 60)}h ${remainMin % 60}m left` : `~${remainMin} min left`;
+  // Use the real in-flight count from receipts (scheduled + queued, no receipt
+  // yet) so this matches the legend above, not the stale c.scheduled rollup.
+  const r = reach(c, f);
+  const stillScheduled = r.scheduled + r.pending;
   return (
     <div style={{ marginTop: 14 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontSize: 12, color: "var(--blue)", marginBottom: 6 }}>
-        <span>{done ? "Finishing up…" : remainLabel}{c.scheduled > 0 ? ` · ${c.scheduled} still scheduled` : ""}</span>
+        <span>{done ? "Finishing up…" : remainLabel}{stillScheduled > 0 ? ` · ${stillScheduled.toLocaleString()} still scheduled` : ""}</span>
         <span>finishes {new Date(end).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
       </div>
       <div className="prog-bar" style={{ width: "100%", background: "var(--blue-tint)" }}>

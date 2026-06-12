@@ -272,12 +272,12 @@ export default function Inbox() {
                 <div className="th-name">{active.name}{active.blocked && <span style={{ color: "var(--red-ink)", fontSize: 11, marginLeft: 8 }}>blocked</span>}</div>
                 <div className="th-sub">{active.phone}{active.community ? ` · ${active.community}` : ""}</div>
               </div>
-              <select className="seltrig" value={active.lead || "new"} onChange={(e) => setLead(active.id, e.target.value)} title="Lead status" style={{ height: 32 }}>
+              <select className="seltrig" value={active.lead || "new"} onChange={(e) => setLead(active.id, e.target.value)} title="Lead status" aria-label="Lead status" style={{ height: 32 }}>
                 {LEADS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
               </select>
-              <a className="icon-btn" href={`tel:${(active.waPhone ? "+" + active.waPhone : active.phone).replace(/\s/g, "")}`} title="Call"><Icon d={IC.phone} s={17} /></a>
+              <a className="icon-btn" href={`tel:${(active.waPhone ? "+" + active.waPhone : active.phone).replace(/\s/g, "")}`} title="Call" aria-label="Call"><Icon d={IC.phone} s={17} /></a>
               <div style={{ position: "relative" }}>
-                <button className="icon-btn" title="More" onClick={() => setMoreOpen((o) => !o)}><Icon d={IC.dots} s={17} /></button>
+                <button className="icon-btn" title="More" aria-label="More actions" aria-haspopup="menu" aria-expanded={moreOpen} onClick={() => setMoreOpen((o) => !o)}><Icon d={IC.dots} s={17} /></button>
                 {moreOpen && (
                   <>
                     <div className="acct-scrim" onClick={() => setMoreOpen(false)} />
@@ -344,11 +344,11 @@ export default function Inbox() {
                 </div>
               )}
               {senders.length > 1 && (
-                <select className="seltrig" value={sender} onChange={(e) => setSender(e.target.value)} title="Send from" style={{ height: 40, maxWidth: 150 }}>
+                <select className="seltrig" value={sender} onChange={(e) => setSender(e.target.value)} title="Send from" aria-label="Send from number" style={{ height: 40, maxWidth: 150 }}>
                   {senders.map((s) => <option key={s} value={s}>{formatPhone(s)}</option>)}
                 </select>
               )}
-              <button className={`icon-btn ${tplOpen ? "on" : ""}`} title="Insert a template" onClick={() => setTplOpen((o) => !o)}><Icon d={IC.tmpl} s={18} /></button>
+              <button className={`icon-btn ${tplOpen ? "on" : ""}`} title="Insert a template" aria-label="Insert a template" aria-haspopup="menu" aria-expanded={tplOpen} onClick={() => setTplOpen((o) => !o)}><Icon d={IC.tmpl} s={18} /></button>
               {active.live && active.waPhone && <AttachMedia phone={active.waPhone} from={sender} onSent={() => loadMsgs(active.id)} notify={(text) => setToast({ kind: "bad", text })} />}
               <input className="msg-input" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} placeholder="Type a message, or insert a template…" />
               <button className="btn btn-primary send-btn" onClick={send} disabled={sending}><Icon d={IC.send} s={16} f="currentColor" w={0} />{sending ? "…" : "Send"}</button>
@@ -426,7 +426,7 @@ function AttachMedia({ phone, from, onSent, notify }: { phone: string; from?: st
   }
   return (
     <>
-      <button className="icon-btn" onClick={() => ref.current?.click()} disabled={busy} title="Attach image or PDF"><Icon d={IC.paperclip} s={18} /></button>
+      <button className="icon-btn" onClick={() => ref.current?.click()} disabled={busy} title="Attach image or PDF" aria-label="Attach image or PDF"><Icon d={IC.paperclip} s={18} /></button>
       <input ref={ref} type="file" accept="image/*,application/pdf" onChange={pick} style={{ display: "none" }} />
     </>
   );

@@ -23,13 +23,16 @@ const CRUMB: Record<string, string[]> = {
   "/inbox": ["Conversations"],
   "/templates": ["Content Template Builder", "Templates"],
   "/campaigns": ["Broadcasts"],
+  "/automation": ["Automation"],
   "/insights": ["Analytics"],
+  "/suppressed": ["Suppressed contacts"],
+  "/logs": ["Activity log"],
   "/billing": ["Account", "Billing"],
 };
 const PAGE_TITLE: Record<string, string> = {
   "/": "Dashboard", "/inbox": "Inbox", "/templates": "Templates",
-  "/campaigns": "Campaigns", "/insights": "Insights", "/billing": "Billing",
-  "/suppressed": "Suppressed",
+  "/campaigns": "Campaigns", "/automation": "Automation", "/insights": "Insights",
+  "/suppressed": "Suppressed", "/logs": "Logs", "/billing": "Billing",
 };
 
 const initials = (s: string) => s.replace(/[^a-zA-Z ]/g, "").split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();

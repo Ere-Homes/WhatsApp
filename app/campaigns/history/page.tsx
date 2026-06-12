@@ -193,7 +193,11 @@ function reach(c: Campaign, f: Funnel | undefined) {
   const scheduled = Math.min(inFlight, c.scheduled || 0);
   const pending = Math.max(0, inFlight - scheduled);
   const notSent = Math.max(0, total - acceptedByWa - failed);
-  return { total, delivered, read, failed, scheduled, pending, notSent, deliveryRate: f?.deliveryRate || 0 };
+  // Coverage that matches the "X of Y reached" sentence: delivered / total.
+  // (deliveryRate is a different ratio — delivered / accepted — and reads as a
+  // contradiction next to "of Y", so it isn't shown there.)
+  const reachPct = total ? Math.round((delivered / total) * 100) : 0;
+  return { total, delivered, read, failed, scheduled, pending, notSent, reachPct, deliveryRate: f?.deliveryRate || 0 };
 }
 // Status the user can trust: an old "completed" run that never reached everyone
 // is shown as "Incomplete", so the label matches reality.
@@ -220,7 +224,7 @@ function Coverage({ c, f }: { c: Campaign; f: Funnel | undefined }) {
       <div style={{ fontSize: 13, marginBottom: 8 }}>
         <b style={{ fontSize: 19, color: "var(--ink)" }}>{r.delivered.toLocaleString()}</b>
         <span style={{ color: "var(--ink-3)" }}> of {r.total.toLocaleString()} reached</span>
-        {r.delivered > 0 && <span style={{ color: "var(--ink-3)" }}> · {r.deliveryRate}%</span>}
+        {r.delivered > 0 && <span style={{ color: "var(--ink-3)" }}> · {r.reachPct}%</span>}
       </div>
       <div style={{ display: "flex", height: 9, borderRadius: 20, overflow: "hidden", background: "var(--chip)" }}>
         <div style={{ width: w(r.delivered), background: "var(--green-dot)" }} />

@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { Icon, IC, PageHead, downloadCSV } from "@/lib/ui";
+import { errorCause, DEAD_NUMBER_CODES } from "@/lib/twilioErrors";
 
 // datetime-local <-> Date helpers (local time, minute precision)
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -10,21 +11,9 @@ const QUICK: [string, number][] = [["24h", 24], ["7d", 168], ["30d", 720], ["90d
 type Totals = { outbound: number; validOutbound: number; notOnWhatsApp: number; deliveryRate: number; deliveryRateValid: number; readRate: number; inbound: number; failed: number; undelivered: number; failRate: number };
 type TplRow = { name: string; sent: number; replyRate: number };
 
-// Plain-English labels for the WhatsApp/Twilio error codes we actually see, so a
-// failed-delivery line reads "not on WhatsApp" instead of a bare "63016".
-const ERR_LABEL: Record<string, string> = {
-  "63003": "channel auth failed",
-  "63005": "blocked by Meta",
-  "63013": "policy violation",
-  "63016": "outside 24h window",
-  "63018": "rate limited",
-  "63024": "invalid template",
-  "63049": "not on WhatsApp",
-  "21211": "invalid number",
-  "21610": "recipient unsubscribed",
-  "30008": "unknown carrier error",
-};
-const errLabel = (code: string) => `${code} — ${ERR_LABEL[code] || "see Twilio docs"}`;
+// One authoritative source of error-code labels (lib/twilioErrors), shared with
+// the campaign log — so "63024" reads "not a WhatsApp user", not a wrong guess.
+const errLabel = (code: string) => `${code} — ${errorCause(code)}`;
 const LEAD_ORDER = ["hot", "warm", "new", "cold", "won", "lost"] as const;
 const LEAD_LABEL: Record<string, string> = { new: "New", hot: "Hot", warm: "Warm", cold: "Cold", won: "Won", lost: "Lost" };
 const LEAD_COLOR: Record<string, string> = { hot: "var(--red)", warm: "var(--amber-dot)", new: "var(--ink-3)", cold: "var(--blue)", won: "var(--green-dot)", lost: "var(--ink-3)" };
@@ -106,7 +95,7 @@ export default function Insights() {
     // report isn't just templates + pipeline with the metrics missing.
     rows.push(["Metric", "Messages attempted", totals?.outbound ?? "", `last ${spanLabel}`]);
     rows.push(["Metric", "Messages sent (on WhatsApp)", totals?.validOutbound ?? "", `${notOnWA} not on WhatsApp`]);
-    rows.push(["Metric", "Not on WhatsApp", notOnWA, "dead numbers (63049/63003)"]);
+    rows.push(["Metric", "Not on WhatsApp", notOnWA, "dead numbers (63024/63003/21211/21614)"]);
     rows.push(["Metric", "Delivery rate % (reachable)", totals?.deliveryRateValid ?? "", `of ${totals?.validOutbound ?? ""} on WhatsApp`]);
     rows.push(["Metric", "Delivery rate % (all attempts)", totals?.deliveryRate ?? "", `of ${totals?.outbound ?? ""} attempted`]);
     rows.push(["Metric", "Failed/undelivered (real)", realFailed, topRealErr ? errLabel(topRealErr) : ""]);
@@ -124,7 +113,7 @@ export default function Insights() {
   // Failed deliveries + the single most common reason, to explain the delivery rate.
   // Numbers not on WhatsApp are dead numbers, not real delivery failures - break them
   // out so the headline "sent" and delivery rate reflect reachable numbers only.
-  const NOT_ON_WA = new Set(["63049", "63003"]);
+  const NOT_ON_WA = DEAD_NUMBER_CODES;
   const failedCount = totals ? totals.failed + totals.undelivered : 0;
   const notOnWA = totals ? totals.notOnWhatsApp : 0;
   const realFailed = Math.max(0, failedCount - notOnWA);

@@ -46,3 +46,12 @@ export function errorCause(code: string | number | null | undefined): string {
   if (!code) return "";
   return TWILIO_ERRORS[String(code)] || "See Twilio error docs";
 }
+
+// Codes that mean the number is genuinely not reachable on WhatsApp (a dead /
+// invalid number), NOT a content or throttle problem. These are excluded from
+// the "real" delivery-rate denominator and auto-suppressed. Mirrors the status
+// callback's INVALID_NUMBER_CODES. NOTE: 63049 is Meta's per-user marketing
+// throttle (a real non-delivery to a LIVE number) — it is deliberately NOT here.
+export const DEAD_NUMBER_CODES = new Set(["63024", "63003", "21211", "21614"]);
+export const isDeadNumber = (code: string | number | null | undefined) =>
+  !!code && DEAD_NUMBER_CODES.has(String(code));

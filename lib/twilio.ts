@@ -13,6 +13,23 @@ export function twilioCreds() {
   };
 }
 
+// Turn Twilio's terse REST errors into something a human can act on. A blocked
+// or wrong credential comes back as HTTP 401 + code 20003 with the bare message
+// "Authenticate" - which reads like a button, not a problem. Map the common
+// account-level failures to plain guidance; pass everything else through.
+export function twilioError(status: number, data: any, fallback: string): Error {
+  const code = data?.code;
+  if (status === 401 || code === 20003) {
+    return new Error(
+      "Twilio rejected the credentials. The account is likely suspended, or the API key/token changed. Check the Twilio console."
+    );
+  }
+  if (status === 403 || code === 20005) {
+    return new Error("Twilio account is not active (suspended or closed). Open the Twilio console to restore it.");
+  }
+  return new Error(data?.message || fallback);
+}
+
 // GET against any Twilio host (api.twilio.com or content.twilio.com).
 // `url` may be a full URL or a path beginning with "/".
 export async function twilioGet(url: string) {
@@ -20,7 +37,7 @@ export async function twilioGet(url: string) {
   const full = url.startsWith("http") ? url : `https://api.twilio.com${url}`;
   const res = await fetch(full, { headers: { Authorization: authHeader } });
   const data = await res.json();
-  if (!res.ok) throw new Error(data?.message || `Twilio GET ${res.status}`);
+  if (!res.ok) throw twilioError(res.status, data, `Twilio GET ${res.status}`);
   return data;
 }
 
@@ -52,7 +69,7 @@ export async function twilioContentPost(path: string, body: any) {
     body: JSON.stringify(body),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.message || `Twilio POST ${res.status}`);
+  if (!res.ok) throw twilioError(res.status, data, `Twilio POST ${res.status}`);
   return data;
 }
 
@@ -65,7 +82,7 @@ export async function twilioContentDelete(path: string) {
   });
   if (!res.ok && res.status !== 204) {
     const data = await res.json().catch(() => ({}));
-    throw new Error(data?.message || `Twilio DELETE ${res.status}`);
+    throw twilioError(res.status, data, `Twilio DELETE ${res.status}`);
   }
 }
 
@@ -118,7 +135,7 @@ async function postMessage(form: URLSearchParams, opts?: { sendAt?: string; from
     body: form,
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data?.message || "Twilio send failed");
+  if (!res.ok) throw twilioError(res.status, data, "Twilio send failed");
   return data; // includes sid, status
 }
 
@@ -136,7 +153,7 @@ export async function cancelMessage(messageSid: string) {
     body: new URLSearchParams({ Status: "canceled" }),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.message || `Cancel failed (${res.status})`);
+  if (!res.ok) throw twilioError(res.status, data, `Cancel failed (${res.status})`);
   return data;
 }
 

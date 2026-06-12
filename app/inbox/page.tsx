@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { Icon, IC, Avatar, CHECK2 } from "@/lib/ui";
+import { Icon, IC, Avatar, CHECK2, Skeleton, Toast } from "@/lib/ui";
 import { CONVOS, SEED_TEMPLATES, type Tpl } from "@/lib/fixtures";
 import { formatPhone } from "@/lib/format";
 
@@ -61,6 +61,8 @@ export default function Inbox() {
   const [senders, setSenders] = useState<string[]>([]);
   const [sender, setSender] = useState("");
   const [sending, setSending] = useState(false);
+  const [loaded, setLoaded] = useState(false); // first conversation fetch settled
+  const [toast, setToast] = useState<{ kind: "good" | "bad"; text: string } | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const threadRef = useRef<HTMLDivElement>(null);
 
@@ -110,6 +112,8 @@ export default function Inbox() {
       setLive(false);
       setConvos(d);
       if (!activeId) setActiveId(d[0].id);
+    } finally {
+      setLoaded(true);
     }
   }
 
@@ -182,7 +186,7 @@ export default function Inbox() {
         setDraft(""); setTplOpen(false);
         await loadMsgs(active.id);
       } catch (e: any) {
-        alert("Send failed: " + e.message);
+        setToast({ kind: "bad", text: "Send failed: " + e.message });
       } finally {
         setSending(false);
       }
@@ -226,8 +230,14 @@ export default function Inbox() {
               ))}
             </div>
           </div>
+          {loaded && !live && (
+            <div style={{ background: "var(--amber-bg)", color: "var(--amber-ink)", borderBottom: "1px solid var(--amber-border)", padding: "8px 16px", fontSize: 12, fontWeight: 600 }}>
+              Showing sample data — not connected to the live inbox. These replies aren&apos;t real.
+            </div>
+          )}
           <div className="conv-list">
-            {list.map((c) => (
+            {!loaded && <div style={{ padding: 12 }}><Skeleton rows={7} /></div>}
+            {loaded && list.map((c) => (
               <div key={c.id} className={`conv-item ${c.id === activeId ? "active" : ""}`} onClick={() => openConvo(c)}>
                 <Avatar name={c.name} size={42} />
                 <div className="ci-main">
@@ -249,7 +259,7 @@ export default function Inbox() {
                 </div>
               </div>
             ))}
-            {list.length === 0 && <div className="empty sm"><div>No conversations match.</div></div>}
+            {loaded && list.length === 0 && <div className="empty sm"><div>No conversations match.</div></div>}
           </div>
         </div>
 
@@ -339,7 +349,7 @@ export default function Inbox() {
                 </select>
               )}
               <button className={`icon-btn ${tplOpen ? "on" : ""}`} title="Insert a template" onClick={() => setTplOpen((o) => !o)}><Icon d={IC.tmpl} s={18} /></button>
-              {active.live && active.waPhone && <AttachMedia phone={active.waPhone} from={sender} onSent={() => loadMsgs(active.id)} />}
+              {active.live && active.waPhone && <AttachMedia phone={active.waPhone} from={sender} onSent={() => loadMsgs(active.id)} notify={(text) => setToast({ kind: "bad", text })} />}
               <input className="msg-input" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} placeholder="Type a message, or insert a template…" />
               <button className="btn btn-primary send-btn" onClick={send} disabled={sending}><Icon d={IC.send} s={16} f="currentColor" w={0} />{sending ? "…" : "Send"}</button>
             </div>
@@ -348,18 +358,19 @@ export default function Inbox() {
           <div className="thread-col empty-thread">Select a conversation</div>
         )}
       </div>
+      {toast && <Toast kind={toast.kind} onDone={() => setToast(null)}>{toast.text}</Toast>}
     </div>
   );
 
   async function pushPipedrive(c: UIConv) {
-    if (!c.live || !c.waPhone) { alert("Pipedrive push needs a live conversation."); return; }
+    if (!c.live || !c.waPhone) { setToast({ kind: "bad", text: "Pipedrive push needs a live conversation." }); return; }
     try {
       const res = await fetch("/api/pipedrive/push", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone: "+" + c.waPhone, name: c.name }) });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "Failed");
-      alert("Pushed to Pipedrive as a Hot lead.");
+      setToast({ kind: "good", text: "Pushed to Pipedrive as a Hot lead." });
     } catch (e: any) {
-      alert("Pipedrive push failed: " + e.message);
+      setToast({ kind: "bad", text: "Pipedrive push failed: " + e.message });
     }
   }
   async function markUnread(c: UIConv) {
@@ -388,7 +399,7 @@ function CrmContext({ phone }: { phone: string }) {
 }
 
 /* Attach an image or PDF and send it as a media message (within 24h window). */
-function AttachMedia({ phone, from, onSent }: { phone: string; from?: string; onSent: () => void }) {
+function AttachMedia({ phone, from, onSent, notify }: { phone: string; from?: string; onSent: () => void; notify: (text: string) => void }) {
   const [busy, setBusy] = useState(false);
   const ref = useRef<HTMLInputElement>(null);
   async function pick(e: React.ChangeEvent<HTMLInputElement>) {
@@ -407,7 +418,7 @@ function AttachMedia({ phone, from, onSent }: { phone: string; from?: string; on
       if (!res.ok) throw new Error(d.error || "Send failed");
       onSent();
     } catch (err: any) {
-      alert(err.message);
+      notify(err.message);
     } finally {
       setBusy(false);
       if (ref.current) ref.current.value = "";

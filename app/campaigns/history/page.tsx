@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Icon, IC, PageHead, Skeleton } from "@/lib/ui";
+import { Icon, IC, PageHead, Skeleton, Toast } from "@/lib/ui";
 import { errorCause } from "@/lib/twilioErrors";
 
 type Campaign = {
@@ -19,6 +19,7 @@ export default function CampaignHistory() {
   const [funnels, setFunnels] = useState<Record<string, Funnel>>({});
   const [updatedAt, setUpdatedAt] = useState<number | null>(null);
   const [, setTick] = useState(0); // 1s heartbeat so countdowns/progress bars move live
+  const [toast, setToast] = useState<{ kind: "good" | "bad"; text: string } | null>(null);
 
   async function load() {
     const data = await fetch("/api/campaigns?view=log&limit=100").then((r) => r.json()).then((d) => d.campaigns).catch(() => null);
@@ -49,8 +50,8 @@ export default function CampaignHistory() {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: c.id }),
     });
     const d = await res.json();
-    if (!res.ok) return alert("Cancel failed: " + (d.error || ""));
-    alert(`Canceled ${d.canceled} pending message(s).` + (d.alreadyGone ? ` ${d.alreadyGone} had already sent.` : ""));
+    if (!res.ok) { setToast({ kind: "bad", text: "Cancel failed: " + (d.error || "") }); return; }
+    setToast({ kind: "good", text: `Canceled ${d.canceled} pending message(s).` + (d.alreadyGone ? ` ${d.alreadyGone} had already sent.` : "") });
     load();
   }
 
@@ -114,6 +115,7 @@ export default function CampaignHistory() {
           );
         })
       )}
+      {toast && <Toast kind={toast.kind} onDone={() => setToast(null)}>{toast.text}</Toast>}
     </div></div>
   );
 }

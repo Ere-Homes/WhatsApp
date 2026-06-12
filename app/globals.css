@@ -511,3 +511,49 @@ select.input{appearance:none;cursor:pointer;background-image:url("data:image/svg
   .seg-tabs button{height:36px;}
   .top-avatar{padding:6px;margin:-6px -6px -6px -4px;}
 }
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Motion layer — GPU-only (opacity + transform), so it composites off the main
+   thread and never costs layout/paint or page-speed. `backwards` fill (not
+   `forwards`) means the element returns to its natural styles after the entrance,
+   so it doesn't lock transforms and hover lifts still work. Entrances replay only
+   when an element truly mounts (page navigation, a new inbox row) — never on the
+   8s/20s data polls, because React reuses DOM nodes with stable keys. The whole
+   layer is switched off under prefers-reduced-motion.
+   ────────────────────────────────────────────────────────────────────────── */
+@keyframes riseIn{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:none;}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+@keyframes fadeIn{from{opacity:0;}to{opacity:1;}}
+
+/* Each page fades in on mount/navigation — a soft, premium page transition. */
+.page{animation:fadeIn .3s ease both;}
+.page-head{animation:riseIn .44s cubic-bezier(.22,.61,.36,1) backwards;}
+
+/* KPI cards cascade in. */
+.kpis .kpi{animation:riseIn .5s cubic-bezier(.22,.61,.36,1) backwards;}
+.kpis .kpi:nth-child(1){animation-delay:.05s;}
+.kpis .kpi:nth-child(2){animation-delay:.10s;}
+.kpis .kpi:nth-child(3){animation-delay:.15s;}
+.kpis .kpi:nth-child(4){animation-delay:.20s;}
+.kpis .kpi:nth-child(5){animation-delay:.25s;}
+
+/* Major content blocks rise in just behind the header. */
+.card,.sect,.panel{animation:riseIn .5s cubic-bezier(.22,.61,.36,1) .06s backwards;}
+
+/* Conversation rows and table rows arrive with a gentle fade — including new
+   inbound messages, which animate in on their own without touching the rest. */
+.conv-item{animation:fadeUp .34s ease backwards;}
+.ttable tbody tr{animation:fadeIn .3s ease backwards;}
+
+/* Premium hover lift on cards/KPIs (works because entrances use `backwards`). */
+.kpi,.card{transition:transform .16s ease,box-shadow .16s ease,border-color .14s;}
+.kpi:hover,.card:hover{transform:translateY(-2px);box-shadow:var(--sh-lg);}
+.pick:hover{transform:translateY(-1px);}
+
+/* Tactile press feedback on buttons. */
+.btn:active{transform:translateY(1px);}
+
+/* Honour users who ask for less motion: disable the whole layer. */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;animation-delay:0!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important;}
+}

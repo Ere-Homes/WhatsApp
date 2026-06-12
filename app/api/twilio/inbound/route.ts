@@ -1,13 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { sendWhatsApp } from "@/lib/twilio";
+import { verifyTwilioWebhook } from "@/lib/twilioSignature";
 import { pushLeadFromWhatsApp } from "@/lib/pipedrive";
 import { logConversationToPipedrive } from "@/lib/pipedriveSync";
+
+const ok200 = () => new NextResponse("<Response></Response>", { headers: { "Content-Type": "text/xml" } });
 
 // Twilio posts incoming WhatsApp here (form-encoded).
 // NOTE: only switch Twilio's inbound webhook to this once you retire Ulgebra inbound.
 export async function POST(req: NextRequest) {
   const form = await req.formData();
+  const params: Record<string, string> = {};
+  for (const [k, v] of form.entries()) params[k] = String(v);
+
+  // Reject forged webhooks (only enforced once TWILIO_ENFORCE_SIGNATURE=1).
+  if (!verifyTwilioWebhook(req, params).allow) return new NextResponse("Forbidden", { status: 403 });
+
   const from = String(form.get("From") || "").replace("whatsapp:", "");
   const body = String(form.get("Body") || "");
   const sid = String(form.get("MessageSid") || "");
@@ -17,6 +26,14 @@ export async function POST(req: NextRequest) {
   const phone = from.replace("+", "");
   const displayBody = body || (mediaUrl ? "[media]" : "");
   const db = supabaseAdmin();
+
+  // Idempotency: Twilio retries on any slow/non-2xx response. If we've already
+  // logged this MessageSid, ack and stop so we don't duplicate the message or
+  // re-fire the auto-reply / Pipedrive lead push.
+  if (sid) {
+    const { data: dupe } = await db.from("messages").select("id").eq("twilio_sid", sid).maybeSingle();
+    if (dupe) return ok200();
+  }
 
   // upsert conversation + log inbound (capture WhatsApp profile name if present)
   const { data: conv } = await db
@@ -90,8 +107,9 @@ export async function POST(req: NextRequest) {
   }
 
   // Keep the Pipedrive transcript note current (best-effort; only if linked).
-  await logConversationToPipedrive(conv!.id);
+  // Wrapped so a Pipedrive hiccup can't 500 the webhook and trigger a retry.
+  try { await logConversationToPipedrive(conv!.id); } catch { /* non-fatal */ }
 
   // empty TwiML 200 so Twilio is happy
-  return new NextResponse("<Response></Response>", { headers: { "Content-Type": "text/xml" } });
+  return ok200();
 }

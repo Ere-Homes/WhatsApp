@@ -439,11 +439,52 @@ export default function Campaigns() {
     ].join("\n\n");
     if (!confirm(summary)) return;
 
+    // DRIP → server-side queue. One enqueue call writes the whole schedule as
+    // 'scheduled' messages; the /api/cron/dispatch worker sends each batch as it
+    // comes due. No browser loop: this survives the tab closing and always keeps
+    // inside the 9am-8pm Dubai window.
+    if (mode === "drip") {
+      setRunning(true);
+      setProgress({ done: 0, total: recipients.length, sent: 0, skipped: 0, failed: 0 });
+      try {
+        const cr = await fetch("/api/campaign/create", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: tpl?.name, templateSid: tplSid, templateName: tpl?.name, sender, mode, total: recipients.length, finishAt: new Date(dripFinishMs).toISOString() }),
+        });
+        const cd = await cr.json();
+        if (!cr.ok) throw new Error(cd.error || "Could not create the campaign.");
+        const campaignId = cd.id;
+
+        const er = await fetch("/api/campaign/enqueue", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ campaignId, contentSid: tplSid, sender: sender || undefined, recipients, perBatch, intervalMin, daytime: daytimeOnly }),
+        });
+        const ed = await er.json();
+        if (!er.ok) throw new Error(ed.error || "Could not schedule the drip.");
+
+        // Compile not-in-CRM recipients to the Sheet (best-effort, never blocks).
+        let uncrmNote = "";
+        try {
+          const ex = await fetch("/api/campaign/export-uncrm", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ campaignId, campaignName: tpl?.name, mode: source, phones: sendNumbers, sentAt: new Date().toISOString() }),
+          });
+          const exd = await ex.json();
+          if (ex.ok && exd.notInCrm > 0) uncrmNote = exd.logged ? ` · ${exd.notInCrm} not in CRM → added to the Sheet.` : ` · ${exd.notInCrm} not in CRM (Sheet not configured).`;
+        } catch { /* ignore */ }
+
+        const skipNote = ed.skipped ? ` · skipped ${ed.skipped} (blocked or already queued)` : "";
+        setDoneMsg(`Scheduled ${ed.enqueued} recipient(s). They send automatically between now and ${drip?.finishLabel}, inside 9am-8pm Dubai${skipNote}.${uncrmNote} You can close this tab — sending runs on the server. Track it in the campaign log.`);
+      } catch (e: any) {
+        setErr(e.message);
+      } finally {
+        setRunning(false);
+      }
+      return;
+    }
+
     const label = renderLabel(tpl, vars);
-    const finishAtIso =
-      mode === "later" ? new Date(sendAt).toISOString()
-      : mode === "drip" ? new Date(dripFinishMs).toISOString()
-      : null;
+    const finishAtIso = mode === "later" ? new Date(sendAt).toISOString() : null;
 
     setRunning(true);
     let done = 0, sent = 0, scheduled = 0, skipped = 0, failed = 0;
@@ -488,14 +529,14 @@ export default function Campaigns() {
         }
         setProgress({ done, total: recipients.length, sent: sent + scheduled, skipped, failed });
       }
-      // If a spread/scheduled send was requested but nothing actually scheduled,
-      // Twilio sent immediately (no Messaging Service configured). Say so plainly.
-      const schedWanted = mode === "drip" || mode === "later";
-      const schedNote = schedWanted && scheduled === 0
+      // "later" schedules via Twilio; if nothing actually scheduled, Twilio sent
+      // immediately (no Messaging Service configured). Say so plainly. (Drip no
+      // longer reaches here — it returns early via the server-side queue.)
+      const schedNote = mode === "later" && scheduled === 0
         ? " Heads up: scheduling is not configured (Twilio Messaging Service SID), so these went out immediately instead of spreading out."
         : "";
       const batchNote = batchErrors ? ` ${batchErrors} batch(es) errored and were skipped.` : "";
-      const tail = mode === "drip" && scheduled > 0 ? ` Drip continues until ${drip?.finishLabel}.` : "";
+      const tail = "";
       const sch = scheduled ? `, scheduled ${scheduled}` : "";
       // Compile recipients that aren't in the Audience CRM into the Google Sheet,
       // with where they came from, so they can be added. Best-effort - never

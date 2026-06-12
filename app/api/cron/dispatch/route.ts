@@ -33,14 +33,17 @@ async function run(req: NextRequest) {
 
   // Find due messages, then claim them atomically (the status guard means a
   // concurrent run only gets the rows it actually flipped).
+  // CRITICAL: only rows WITHOUT a twilio_sid. Rows that already have one were
+  // scheduled through Twilio's own scheduler (the old browser-loop flow) — they
+  // will send themselves, so dispatching them here would double-send.
   const { data: due } = await db.from("messages").select("id")
-    .eq("status", "scheduled").lte("scheduled_at", new Date(now).toISOString())
+    .eq("status", "scheduled").is("twilio_sid", null).lte("scheduled_at", new Date(now).toISOString())
     .order("scheduled_at", { ascending: true }).limit(CAP);
   const ids = (due || []).map((d: any) => d.id);
   if (ids.length === 0) return NextResponse.json({ claimed: 0, sent: 0, skipped: 0, failed: 0 });
 
   const { data: claimed } = await db.from("messages").update({ status: "sending" })
-    .in("id", ids).eq("status", "scheduled")
+    .in("id", ids).eq("status", "scheduled").is("twilio_sid", null)
     .select("id, conversation, content_sid, content_vars, body, campaign");
   const rows = claimed || [];
   if (rows.length === 0) return NextResponse.json({ claimed: 0, sent: 0, skipped: 0, failed: 0 });

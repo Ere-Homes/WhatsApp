@@ -2,7 +2,6 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { RATES } from "@/lib/rates";
-import { supabaseBrowser } from "@/lib/supabase";
 import { formatPhone } from "@/lib/format";
 import { PageHead } from "@/lib/ui";
 
@@ -236,12 +235,10 @@ export default function Campaigns() {
     });
     // Outbound messages in the last 24h (for the daily-cap guard)
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    supabaseBrowser()
-      .from("messages")
-      .select("id", { count: "exact", head: true })
-      .eq("direction", "out")
-      .gte("created_at", since)
-      .then(({ count }) => setSentToday(count ?? 0));
+    fetch(`/api/messages?view=outCount&since=${encodeURIComponent(since)}`)
+      .then((r) => r.json())
+      .then((d) => setSentToday(d.count ?? 0))
+      .catch(() => {});
   }, []);
 
   const tpl = tpls.find((t) => t.sid === tplSid);

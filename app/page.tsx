@@ -2,7 +2,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon, IC, Avatar, PageHead } from "@/lib/ui";
-import { supabaseBrowser } from "@/lib/supabase";
 
 type Recent = { name: string; msg: string; time: string; unread: number; tag: string };
 type Perf = { name: string; sent: number; replyRate: number };
@@ -52,19 +51,18 @@ export default function Dashboard() {
   // range doesn't apply — load them once on mount.
   useEffect(() => {
     (async () => {
-      const sb = supabaseBrowser();
       const [convR, campR] = await Promise.allSettled([
-        sb.from("conversations").select("*").order("last_at", { ascending: false }).limit(50),
-        sb.from("campaigns").select("id,status").in("status", ["sending", "scheduled"]),
+        fetch("/api/conversations?view=recent&limit=50").then((r) => r.json()),
+        fetch("/api/campaigns?view=active").then((r) => r.json()),
       ]);
 
       let convs: any[] = [];
-      if (convR.status === "fulfilled" && (convR.value as any).data?.length) {
-        convs = (convR.value as any).data;
+      if (convR.status === "fulfilled" && convR.value?.conversations?.length) {
+        convs = convR.value.conversations;
       }
       setKpis((k) => ({
         ...k,
-        campaigns: campR.status === "fulfilled" && (campR.value as any).data ? (campR.value as any).data.length : k.campaigns,
+        campaigns: campR.status === "fulfilled" && campR.value?.campaigns ? campR.value.campaigns.length : k.campaigns,
       }));
 
       const tagOf = (s?: string) => (s || "").toLowerCase() === "hot" ? "Hot" : (s || "").toLowerCase() === "warm" ? "Warm" : "";
@@ -99,16 +97,15 @@ export default function Dashboard() {
   // leads (Hot/Warm contacts who actually replied inbound in the window).
   useEffect(() => {
     (async () => {
-      const sb = supabaseBrowser();
       const fromISO = new Date(from).toISOString();
       const toISO = new Date(to).toISOString();
       const qs = `from=${encodeURIComponent(fromISO)}&to=${encodeURIComponent(toISO)}`;
       const [insR, repliedR, hotR] = await Promise.allSettled([
         fetch(`/api/insights?${qs}`).then((r) => r.json()),
         // New leads = people who actually replied (inbound) inside the window...
-        sb.from("messages").select("conversation").eq("direction", "in").gte("created_at", fromISO).lte("created_at", toISO),
+        fetch(`/api/messages?view=repliedIds&${qs}`).then((r) => r.json()),
         // ...and are tagged Hot/Warm. The intersection = "replied positively in range".
-        sb.from("conversations").select("id,lead_status").in("lead_status", ["hot", "warm"]),
+        fetch(`/api/conversations?view=leads`).then((r) => r.json()),
       ]);
 
       setKpis((k) => {
@@ -120,8 +117,8 @@ export default function Dashboard() {
         }
         // Always assign (even 0) so a stale value from a wider window can't linger.
         if (repliedR.status === "fulfilled" && hotR.status === "fulfilled") {
-          const repliedIds = new Set(((repliedR.value as any).data || []).map((m: any) => m.conversation));
-          next.leads = ((hotR.value as any).data || []).filter((c: any) => repliedIds.has(c.id)).length;
+          const repliedIds = new Set((repliedR.value as any)?.conversationIds || []);
+          next.leads = ((hotR.value as any)?.conversations || []).filter((c: any) => repliedIds.has(c.id)).length;
         }
         return next;
       });

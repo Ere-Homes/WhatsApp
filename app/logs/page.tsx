@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { Icon, IC, PageHead, Skeleton } from "@/lib/ui";
-import { supabaseBrowser } from "@/lib/supabase";
 import { errorCause } from "@/lib/twilioErrors";
 
 type Row = {
@@ -24,7 +23,6 @@ const FILTERS: { id: FilterKey; label: string }[] = [
 ];
 
 export default function Logs() {
-  const sb = supabaseBrowser();
   const [rows, setRows] = useState<Row[] | null>(null);
   const [tpl, setTpl] = useState<Record<string, string>>({}); // content_sid -> template name
   const [filter, setFilter] = useState<FilterKey>("all");
@@ -32,11 +30,7 @@ export default function Logs() {
   const [updatedAt, setUpdatedAt] = useState<number | null>(null);
 
   async function load() {
-    const { data } = await sb
-      .from("messages")
-      .select("id, direction, status, error_code, body, content_sid, created_at, conversation(wa_phone, name)")
-      .order("created_at", { ascending: false })
-      .limit(400);
+    const data = await fetch("/api/messages?view=log&limit=400").then((r) => r.json()).then((d) => d.messages).catch(() => null);
     setRows((data as any as Row[]) || []);
     setUpdatedAt(Date.now());
   }

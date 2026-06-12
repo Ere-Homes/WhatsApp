@@ -4,7 +4,6 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Icon, IC, Avatar, useModCombo, Toast } from "@/lib/ui";
 import { SENDERS, type Sender } from "@/lib/fixtures";
-import { supabaseBrowser } from "@/lib/supabase";
 import { formatPhone } from "@/lib/format";
 
 const NAV = [
@@ -122,32 +121,23 @@ function Sidebar({ path, open, mounted, isMobile, onClose, closeOnNav }: { path:
     return () => { live = false; };
   }, []);
 
-  // Live unread badge (Supabase). Stays at 0 (hidden) when the backend isn't
+  // Live unread badge, via the gated server route (service role) so the browser
+  // never reads the conversations table with the public anon key. Polls every
+  // 15s instead of Supabase realtime. Stays at 0 (hidden) when the backend isn't
   // configured or returns nothing — no seed number.
   useEffect(() => {
-    const sb = supabaseBrowser();
     let live = true;
     async function refresh() {
       try {
-        // Only ACTIONABLE unread: a blocked/invalid contact (e.g. someone who
-        // replied STOP) can carry a stale unread flag, but it lives in Suppressed,
-        // not the inbox — counting it here inflated the badge above the list.
-        const { count, error } = await sb.from("conversations").select("id", { count: "exact", head: true })
-          .eq("unread", true).not("status", "in", "(blocked,invalid)");
-        if (!live) return;
-        if (error) return;
-        if (typeof count === "number") setUnread(count);
+        const res = await fetch("/api/conversations?view=unreadCount");
+        if (!res.ok) return;
+        const { count } = await res.json();
+        if (live && typeof count === "number") setUnread(count);
       } catch { /* keep fallback */ }
     }
     refresh();
-    let ch: ReturnType<typeof sb.channel> | null = null;
-    try {
-      ch = sb.channel("nav-unread")
-        .on("postgres_changes", { event: "*", schema: "public", table: "conversations" } as any, refresh)
-        .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" } as any, refresh)
-        .subscribe();
-    } catch { /* ignore */ }
-    return () => { live = false; if (ch) try { sb.removeChannel(ch); } catch { /* ignore */ } };
+    const poll = setInterval(refresh, 15000);
+    return () => { live = false; clearInterval(poll); };
   }, []);
 
   const sender = senders.find((s) => s.id === senderId) || senders[0];

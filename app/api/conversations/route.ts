@@ -1,0 +1,98 @@
+import { NextRequest, NextResponse } from "next/server";
+import { supabaseAdmin } from "@/lib/supabase";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
+// Read/update WhatsApp conversations through the service role, behind the app
+// login gate (middleware). The browser must NOT touch this table with the public
+// anon key (RLS denies anon), so the inbox/dashboard/suppressed/sidebar call this
+// route instead. Each view keeps its query thin and explicit.
+export async function GET(req: NextRequest) {
+  try {
+    const db = supabaseAdmin();
+    const sp = req.nextUrl.searchParams;
+    const view = sp.get("view") || "inbox";
+
+    if (view === "unreadCount") {
+      // Only ACTIONABLE unread — a blocked/invalid contact lives in Suppressed,
+      // not the inbox, so it must not inflate the sidebar badge.
+      const { count, error } = await db.from("conversations").select("id", { count: "exact", head: true })
+        .eq("unread", true).not("status", "in", "(blocked,invalid)");
+      if (error) throw new Error(error.message);
+      return NextResponse.json({ count: count ?? 0 });
+    }
+
+    if (view === "recent") {
+      const limit = Math.min(200, Number(sp.get("limit")) || 50);
+      const { data, error } = await db.from("conversations").select("*")
+        .order("last_at", { ascending: false }).limit(limit);
+      if (error) throw new Error(error.message);
+      return NextResponse.json({ conversations: data || [] });
+    }
+
+    if (view === "leads") {
+      const { data, error } = await db.from("conversations").select("id,lead_status")
+        .in("lead_status", ["hot", "warm"]);
+      if (error) throw new Error(error.message);
+      return NextResponse.json({ conversations: data || [] });
+    }
+
+    if (view === "suppressed") {
+      const { data, error } = await db.from("conversations").select("id, wa_phone, name, status, last_at")
+        .in("status", ["blocked", "invalid"]).order("last_at", { ascending: false }).limit(1000);
+      if (error) throw new Error(error.message);
+      return NextResponse.json({ conversations: data || [] });
+    }
+
+    if (view === "pipeline") {
+      const from = sp.get("from");
+      const to = sp.get("to");
+      let q = db.from("conversations").select("lead_status, pipedrive_lead_id, created_at");
+      if (from) q = q.gte("created_at", from);
+      if (to) q = q.lte("created_at", to);
+      const { data, error } = await q;
+      if (error) throw new Error(error.message);
+      return NextResponse.json({ conversations: data || [] });
+    }
+
+    // default: inbox — recent 1000 PLUS every actionable lead (hot/warm/unread)
+    // even if older than that window, merged + deduped + sorted newest-first, so
+    // the Hot/Unread tabs never drop a lead past the recent 1000.
+    const [recent, priority] = await Promise.all([
+      db.from("conversations").select("*").order("last_at", { ascending: false }).limit(1000),
+      db.from("conversations").select("*").or("lead_status.eq.hot,lead_status.eq.warm,unread.eq.true").limit(1000),
+    ]);
+    if (recent.error) throw new Error(recent.error.message);
+    const seen = new Set<string>();
+    const conversations = [...(recent.data || []), ...(priority.data || [])]
+      .filter((c: any) => (seen.has(c.id) ? false : (seen.add(c.id), true)))
+      .sort((a: any, b: any) => new Date(b.last_at || 0).getTime() - new Date(a.last_at || 0).getTime());
+    return NextResponse.json({ conversations });
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message || "Failed to load conversations" }, { status: 500 });
+  }
+}
+
+// Update a conversation. Only a small whitelist of UI-settable fields, so a
+// stolen session can't rewrite arbitrary columns.
+export async function POST(req: NextRequest) {
+  try {
+    const { id, patch } = await req.json();
+    if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
+    const allowed: Record<string, any> = {};
+    if (patch && typeof patch === "object") {
+      if ("unread" in patch) allowed.unread = !!patch.unread;
+      if ("lead_status" in patch) allowed.lead_status = String(patch.lead_status);
+      if ("status" in patch) allowed.status = String(patch.status);
+    }
+    if (!Object.keys(allowed).length) return NextResponse.json({ error: "no valid fields" }, { status: 400 });
+    const db = supabaseAdmin();
+    const { error } = await db.from("conversations").update(allowed).eq("id", id);
+    if (error) throw new Error(error.message);
+    return NextResponse.json({ ok: true });
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message || "Update failed" }, { status: 500 });
+  }
+}

@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
 import { Icon, IC, PageHead, downloadCSV } from "@/lib/ui";
-import { supabaseBrowser } from "@/lib/supabase";
 
 // datetime-local <-> Date helpers (local time, minute precision)
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -33,7 +32,6 @@ const LEAD_COLOR: Record<string, string> = { hot: "var(--red)", warm: "var(--amb
 const dash = "—";
 
 export default function Insights() {
-  const sb = supabaseBrowser();
   // Default window: last 24 hours.
   const [to, setTo] = useState(() => toInput(new Date()));
   const [from, setFrom] = useState(() => toInput(new Date(Date.now() - 24 * 3600000)));
@@ -84,11 +82,11 @@ export default function Insights() {
   // Real lead pipeline from our own conversations (leads = pushed to Pipedrive).
   useEffect(() => {
     setPipeline(null);
-    sb.from("conversations").select("lead_status, pipedrive_lead_id, created_at")
-      .gte("created_at", new Date(from).toISOString())
-      .lte("created_at", new Date(to).toISOString())
-      .then(({ data }) => {
-        const rows = data || [];
+    const qs = `from=${encodeURIComponent(new Date(from).toISOString())}&to=${encodeURIComponent(new Date(to).toISOString())}`;
+    fetch(`/api/conversations?view=pipeline&${qs}`)
+      .then((r) => r.json())
+      .then((d) => {
+        const rows = d.conversations || [];
         const pl: Record<string, number> = {};
         let l = 0;
         for (const c of rows as any[]) {
@@ -97,7 +95,8 @@ export default function Insights() {
         }
         setPipeline(pl);
         setLeads(l);
-      });
+      })
+      .catch(() => { setPipeline({}); setLeads(0); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [from, to]);
 

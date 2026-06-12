@@ -2,7 +2,6 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Icon, IC, PageHead, Skeleton } from "@/lib/ui";
-import { supabaseBrowser } from "@/lib/supabase";
 import { errorCause } from "@/lib/twilioErrors";
 
 type Campaign = {
@@ -15,7 +14,6 @@ type Recipient = { status: string | null; error_code?: string | null; created_at
 type Funnel = { sent: number; delivered: number; read: number; failed: number; deliveryRate: number; readRate: number; reasons?: Record<string, number> };
 
 export default function CampaignHistory() {
-  const sb = supabaseBrowser();
   const [rows, setRows] = useState<Campaign[] | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [funnels, setFunnels] = useState<Record<string, Funnel>>({});
@@ -23,7 +21,7 @@ export default function CampaignHistory() {
   const [, setTick] = useState(0); // 1s heartbeat so countdowns/progress bars move live
 
   async function load() {
-    const { data } = await sb.from("campaigns").select("*").order("created_at", { ascending: false }).limit(100);
+    const data = await fetch("/api/campaigns?view=log&limit=100").then((r) => r.json()).then((d) => d.campaigns).catch(() => null);
     setRows((data as Campaign[]) || []);
   }
   async function refreshAll() {
@@ -122,17 +120,12 @@ export default function CampaignHistory() {
 
 // Per-recipient delivery report for one campaign.
 function Recipients({ campaignId }: { campaignId: string }) {
-  const sb = supabaseBrowser();
   const [list, setList] = useState<Recipient[] | null>(null);
   useEffect(() => {
-    // select * so the scheduled_at column (once added) lights up automatically
-    // without 400-ing while it does not exist yet.
-    sb.from("messages")
-      .select("*, conversation(wa_phone, name)")
-      .eq("campaign", campaignId)
-      .order("created_at", { ascending: false })
-      .limit(2000)
-      .then(({ data }) => setList((data as any as Recipient[]) || []));
+    fetch(`/api/messages?view=campaign&campaign=${encodeURIComponent(campaignId)}`)
+      .then((r) => r.json())
+      .then((d) => setList((d.messages as any as Recipient[]) || []))
+      .catch(() => setList([]));
   }, [campaignId]); // eslint-disable-line
 
   if (list === null) return <div style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 12 }}>Loading recipients…</div>;

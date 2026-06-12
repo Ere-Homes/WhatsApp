@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
 import { Icon, IC, PageHead, Skeleton, Avatar } from "@/lib/ui";
-import { supabaseBrowser } from "@/lib/supabase";
 import { formatPhone } from "@/lib/format";
 
 type Conv = { id: string; wa_phone: string; name: string | null; status: string; last_at: string | null };
@@ -18,14 +17,12 @@ const FILTERS = [
 ] as const;
 
 export default function Suppressed() {
-  const sb = supabaseBrowser();
   const [rows, setRows] = useState<Conv[] | null>(null);
   const [filter, setFilter] = useState<"all" | "blocked" | "invalid">("all");
   const [busy, setBusy] = useState<string | null>(null);
 
   async function load() {
-    const { data } = await sb.from("conversations").select("id, wa_phone, name, status, last_at")
-      .in("status", ["blocked", "invalid"]).order("last_at", { ascending: false }).limit(1000);
+    const data = await fetch("/api/conversations?view=suppressed").then((r) => r.json()).then((d) => d.conversations).catch(() => null);
     setRows((data as Conv[]) || []);
   }
   useEffect(() => { load(); }, []); // eslint-disable-line
@@ -34,7 +31,7 @@ export default function Suppressed() {
     const verb = c.status === "blocked" ? "re-enable messaging to this opted-out contact" : "restore this invalid number";
     if (!confirm(`Are you sure you want to ${verb}? They'll be eligible to receive messages again.`)) return;
     setBusy(c.id);
-    await sb.from("conversations").update({ status: "open" }).eq("id", c.id);
+    await fetch("/api/conversations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: c.id, patch: { status: "open" } }) }).catch(() => {});
     setRows((prev) => (prev || []).filter((x) => x.id !== c.id));
     setBusy(null);
   }

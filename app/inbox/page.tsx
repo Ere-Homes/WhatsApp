@@ -2,7 +2,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon, IC, Avatar, CHECK2 } from "@/lib/ui";
 import { CONVOS, SEED_TEMPLATES, type Tpl } from "@/lib/fixtures";
-import { supabaseBrowser } from "@/lib/supabase";
 import { formatPhone } from "@/lib/format";
 
 type UIMsg = { id: string; from: "in" | "out"; t: string; at: string; status?: string | null; media?: string | null; contentSid?: string | null };
@@ -50,7 +49,6 @@ function demoConvs(): UIConv[] {
 }
 
 export default function Inbox() {
-  const sb = useRef(supabaseBrowser());
   const [convos, setConvos] = useState<UIConv[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [live, setLive] = useState(false);
@@ -87,18 +85,12 @@ export default function Inbox() {
 
   async function loadConvs() {
     try {
-      // Recent window (PostgREST caps a plain select at ~1000 rows) PLUS every
-      // actionable lead (hot/warm or unread) even if older than that window, so
-      // the Hot and Unread tabs never drop a lead that's past the recent 1000.
-      const [recent, priority] = await Promise.all([
-        sb.current.from("conversations").select("*").order("last_at", { ascending: false }).limit(1000),
-        sb.current.from("conversations").select("*").or("lead_status.eq.hot,lead_status.eq.warm,unread.eq.true").limit(1000),
-      ]);
-      if (recent.error) throw new Error("no live data");
-      const seen = new Set<string>();
-      const data = [...(recent.data || []), ...(priority.data || [])]
-        .filter((c: any) => (seen.has(c.id) ? false : (seen.add(c.id), true)))
-        .sort((a: any, b: any) => new Date(b.last_at || 0).getTime() - new Date(a.last_at || 0).getTime());
+      // Server route (service role) does the recent-window + actionable-lead merge
+      // so the Hot/Unread tabs never drop a lead past the recent 1000. The browser
+      // no longer reads the conversations table directly (RLS denies anon).
+      const res = await fetch("/api/conversations?view=inbox");
+      if (!res.ok) throw new Error("no live data");
+      const data: any[] = (await res.json()).conversations || [];
       if (data.length === 0) throw new Error("no live data");
       const mapped: UIConv[] = data.map((c: any) => ({
         id: c.id, name: c.name || "+" + c.wa_phone, phone: formatPhone(c.wa_phone), waPhone: c.wa_phone,
@@ -122,11 +114,15 @@ export default function Inbox() {
   }
 
   async function loadMsgs(id: string) {
-    // NOTE: on a fetch error (e.g. the anon client gets throttled mid campaign
+    // NOTE: on a fetch error (e.g. the server is briefly throttled mid campaign
     // blast) we must NOT mark the conversation loaded — caching an empty result
     // as "loaded" leaves the thread permanently blank until a hard reload.
-    const { data, error } = await sb.current.from("messages").select("*").eq("conversation", id).order("created_at");
-    if (error) return; // leave loaded:false so it shows "Loading…" and retries
+    let data: any[];
+    try {
+      const res = await fetch(`/api/messages?view=thread&conversation=${encodeURIComponent(id)}`);
+      if (!res.ok) return; // leave loaded:false so it shows "Loading…" and retries
+      data = (await res.json()).messages || [];
+    } catch { return; }
     const msgs: UIMsg[] = (data || []).map((m: any) => ({
       id: m.id, from: m.direction === "out" ? "out" : "in",
       t: m.body && m.body !== "[media]" ? m.body : "", at: hhmm(m.created_at), status: m.status, media: m.media_url, contentSid: m.content_sid,
@@ -134,17 +130,13 @@ export default function Inbox() {
     setConvos((p) => p.map((c) => (c.id === id ? { ...c, loaded: true, messages: msgs } : c)));
   }
 
-  // Live updates
+  // Live updates: poll the gated server routes every 8s (replaces Supabase
+  // realtime, which needed the browser's anon DB access). Refreshes the open
+  // thread and the conversation list, same as the old postgres_changes handlers.
   useEffect(() => {
     if (!live) return;
-    let ch: any;
-    try {
-      ch = sb.current.channel("inbox-rt")
-        .on("postgres_changes", { event: "*", schema: "public", table: "messages" } as any, () => { if (activeId) loadMsgs(activeId); loadConvs(); })
-        .on("postgres_changes", { event: "*", schema: "public", table: "conversations" } as any, () => loadConvs())
-        .subscribe();
-    } catch { /* ignore */ }
-    return () => { if (ch) try { sb.current.removeChannel(ch); } catch { /* ignore */ } };
+    const poll = setInterval(() => { if (activeId) loadMsgs(activeId); loadConvs(); }, 8000);
+    return () => clearInterval(poll);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [live, activeId]);
 
@@ -161,6 +153,13 @@ export default function Inbox() {
 
   useEffect(() => { if (threadRef.current) threadRef.current.scrollTop = threadRef.current.scrollHeight; }, [activeId, convos]);
 
+  // Update a conversation through the gated server route (whitelisted fields).
+  async function patchConvo(id: string, patch: Record<string, any>) {
+    try {
+      await fetch("/api/conversations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, patch }) });
+    } catch { /* ignore */ }
+  }
+
   async function openConvo(c: UIConv) {
     setActiveId(c.id);
     setShowThread(true);
@@ -168,7 +167,7 @@ export default function Inbox() {
     setConvos((p) => p.map((x) => (x.id === c.id ? { ...x, unread: 0 } : x)));
     if (c.live) {
       if (!c.loaded) await loadMsgs(c.id);
-      try { await sb.current.from("conversations").update({ unread: false }).eq("id", c.id); } catch { /* ignore */ }
+      patchConvo(c.id, { unread: false });
     }
   }
 
@@ -205,10 +204,8 @@ export default function Inbox() {
   async function setLead(id: string, lead: string) {
     setConvos((p) => p.map((c) => (c.id === id ? { ...c, lead, tag: tagOf(lead) } : c)));
     if (live) {
-      try {
-        await sb.current.from("conversations").update({ lead_status: lead }).eq("id", id);
-        fetch("/api/pipedrive/status", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ conversationId: id }) }).catch(() => {});
-      } catch { /* ignore */ }
+      await patchConvo(id, { lead_status: lead });
+      fetch("/api/pipedrive/status", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ conversationId: id }) }).catch(() => {});
     }
   }
 
@@ -367,7 +364,7 @@ export default function Inbox() {
   }
   async function markUnread(c: UIConv) {
     setConvos((p) => p.map((x) => (x.id === c.id ? { ...x, unread: 1 } : x)));
-    if (c.live) { try { await sb.current.from("conversations").update({ unread: true }).eq("id", c.id); } catch { /* ignore */ } }
+    if (c.live) patchConvo(c.id, { unread: true });
   }
 }
 

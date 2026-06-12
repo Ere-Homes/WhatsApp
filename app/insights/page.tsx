@@ -139,9 +139,9 @@ export default function Insights() {
             <button key={id} className={spanLabel === id ? "on" : ""} onClick={() => setQuick(h)}>{id}</button>
           ))}
         </div>
-        <input type="datetime-local" className="input" style={{ width: 178, marginBottom: 0 }} value={from} max={to} onChange={(e) => setFrom(e.target.value)} title="From" />
+        <input type="datetime-local" className="input dt-range" value={from} max={to} onChange={(e) => setFrom(e.target.value)} title="From" />
         <span style={{ color: "var(--ink-3)" }}>→</span>
-        <input type="datetime-local" className="input" style={{ width: 178, marginBottom: 0 }} value={to} min={from} onChange={(e) => setTo(e.target.value)} title="To" />
+        <input type="datetime-local" className="input dt-range" value={to} min={from} onChange={(e) => setTo(e.target.value)} title="To" />
         <button className="btn btn-sec" onClick={exportCSV}><Icon d={IC.dl} s={15} />Export</button>
       </PageHead>
 

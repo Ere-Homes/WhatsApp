@@ -14,6 +14,7 @@ const NAV = [
   { id: "Campaigns", href: "/campaigns", icon: IC.camp },
   { id: "Automation", href: "/automation", icon: IC.bolt },
   { id: "Insights", href: "/insights", icon: IC.insights },
+  { id: "Suppressed", href: "/suppressed", icon: IC.ban },
   { id: "Logs", href: "/logs", icon: IC.clock },
   { id: "Billing", href: "/billing", icon: IC.billing },
 ];
@@ -29,6 +30,7 @@ const CRUMB: Record<string, string[]> = {
 const PAGE_TITLE: Record<string, string> = {
   "/": "Dashboard", "/inbox": "Inbox", "/templates": "Templates",
   "/campaigns": "Campaigns", "/insights": "Insights", "/billing": "Billing",
+  "/suppressed": "Suppressed",
 };
 
 const initials = (s: string) => s.replace(/[^a-zA-Z ]/g, "").split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
@@ -127,7 +129,11 @@ function Sidebar({ path, open, mounted, isMobile, onClose, closeOnNav }: { path:
     let live = true;
     async function refresh() {
       try {
-        const { count, error } = await sb.from("conversations").select("id", { count: "exact", head: true }).eq("unread", true);
+        // Only ACTIONABLE unread: a blocked/invalid contact (e.g. someone who
+        // replied STOP) can carry a stale unread flag, but it lives in Suppressed,
+        // not the inbox — counting it here inflated the badge above the list.
+        const { count, error } = await sb.from("conversations").select("id", { count: "exact", head: true })
+          .eq("unread", true).not("status", "in", "(blocked,invalid)");
         if (!live) return;
         if (error) return;
         if (typeof count === "number") setUnread(count);

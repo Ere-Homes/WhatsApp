@@ -202,7 +202,7 @@ export default function Inbox() {
   }
 
   const list = convos
-    .filter((c) => (tab === "unread" ? c.unread > 0 : tab === "hot" ? c.tag === "Hot" : true))
+    .filter((c) => (tab === "unread" ? c.unread > 0 && !c.blocked : tab === "hot" ? c.tag === "Hot" : true))
     .filter((c) => !q.trim() || c.name.toLowerCase().includes(q.toLowerCase()) || (c.waPhone || "").includes(q.replace(/[^0-9]/g, "")));
 
   return (

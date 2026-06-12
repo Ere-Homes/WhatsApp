@@ -37,9 +37,19 @@ export async function POST(req: NextRequest) {
 
   // Opt-out safety net - STOP/Unsubscribe etc. ALWAYS blacklist, rule or not.
   const OPT_OUT = ["stop", "unsubscribe", "unsub", "cancel", "stop promotions", "opt out", "optout", "remove me"];
-  if (OPT_OUT.includes(text)) {
-    await db.from("conversations").update({ status: "blocked" }).eq("id", conv!.id);
+  const isOptOut = OPT_OUT.includes(text);
+  // Clear unread too: an opt-out isn't an actionable inbox item (it moves to
+  // Suppressed), so it must not leave a stuck unread that inflates the badge.
+  if (isOptOut) {
+    await db.from("conversations").update({ status: "blocked", unread: false }).eq("id", conv!.id);
   }
+
+  // Did this reply signal interest? Tag the lead "hot" so it surfaces in the
+  // inbox Hot tab instead of sinking down the time-sorted list. Negatives like
+  // "Not interested" are explicitly excluded so they don't get flagged hot.
+  const POS = /\binterested\b|\byes\b|\btell me more\b|\bmore (info|details)\b|\bsend (me )?details\b/;
+  const NEG = /\bnot interested\b|\bno\b|\bwrong number\b|\bremove\b|\bstop\b/;
+  let leadHot = !isOptOut && POS.test(text) && !NEG.test(text);
 
   // Button / keyword auto-reply rules (set per-button when creating a template).
   // Match the tapped button text or typed keyword to an enabled rule.
@@ -47,8 +57,11 @@ export async function POST(req: NextRequest) {
     const { data: rules } = await db.from("auto_replies").select("*").eq("enabled", true);
     const rule = (rules || []).find((r: any) => (r.trigger || "").trim().toLowerCase() === text);
     if (rule) {
+      // A button wired to push a Pipedrive lead is itself a strong interest
+      // signal (e.g. "Interested", "Book a viewing") — treat it as hot.
+      if (rule.push_pipedrive && !rule.block) leadHot = true;
       if (rule.block) {
-        await db.from("conversations").update({ status: "blocked" }).eq("id", conv!.id);
+        await db.from("conversations").update({ status: "blocked", unread: false }).eq("id", conv!.id);
       }
       if (rule.reply) {
         try {
@@ -68,6 +81,13 @@ export async function POST(req: NextRequest) {
       }
     }
   } catch { /* never fail the inbound webhook */ }
+
+  // Surface interested leads as hot (done after the rules block so a
+  // push-to-Pipedrive button counts too). Hot is the top tier, so this only
+  // ever upgrades — it never downgrades a manually-set status.
+  if (leadHot) {
+    try { await db.from("conversations").update({ lead_status: "hot" }).eq("id", conv!.id); } catch { /* non-fatal */ }
+  }
 
   // Keep the Pipedrive transcript note current (best-effort; only if linked).
   await logConversationToPipedrive(conv!.id);

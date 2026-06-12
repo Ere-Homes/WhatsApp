@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
-import { sendTemplate } from "@/lib/twilio";
+import { sendTemplate, getMessageStatus } from "@/lib/twilio";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,6 +14,16 @@ const CAP = 25;
 const DEADLINE_MS = 45000; // leave headroom under maxDuration=60
 const THROTTLE_MS = 250;
 const SUPPRESSED = ["blocked", "invalid"];
+
+// Reconcile pass: rows with a twilio_sid that are stuck at 'scheduled' were created
+// via Twilio's own scheduler (we never send those). Twilio knows their real fate
+// (sent/delivered/failed/canceled) but never tells us unless we ask, so without this
+// they freeze at 'scheduled' forever and the UI lies. Sync a small capped batch each
+// run, time-boxed so it never starves the send loop.
+const RECONCILE_CAP = 40;
+const RECONCILE_BUDGET_MS = 12000;
+const RECONCILE_THROTTLE_MS = 60;
+const INVALID_NUMBER_CODES = ["63024", "63003", "21211", "21614"];
 
 // Send every drip message that has come due. Claims a capped batch of
 // status='scheduled' rows whose scheduled_at <= now, marks them 'sending' (so
@@ -40,6 +50,31 @@ async function run(req: NextRequest) {
   await db.from("messages").update({ status: "scheduled" })
     .eq("status", "sending").is("twilio_sid", null).lte("scheduled_at", orphanCutoff);
 
+  // Reconcile Twilio-native scheduled rows (have a SID, our cron never sends them)
+  // against Twilio's real status, so the UI stops freezing them at 'scheduled'.
+  // Time-boxed and capped so a big backlog never starves the send loop below.
+  let reconciled = 0;
+  const { data: nativePending } = await db.from("messages")
+    .select("id, twilio_sid, conversation")
+    .eq("status", "scheduled").not("twilio_sid", "is", null).limit(RECONCILE_CAP);
+  const reconcileDeadline = now + RECONCILE_BUDGET_MS;
+  for (const m of (nativePending || []) as any[]) {
+    if (Date.now() > reconcileDeadline) break;
+    const real = await getMessageStatus(m.twilio_sid);
+    if (real?.status && real.status !== "scheduled") {
+      await db.from("messages").update({ status: real.status, error_code: real.errorCode || null }).eq("id", m.id);
+      if (m.conversation) {
+        await db.from("conversations").update({ last_status: real.status, last_direction: "out" }).eq("id", m.conversation);
+        const isFail = real.status === "undelivered" || real.status === "failed";
+        if (isFail && real.errorCode && INVALID_NUMBER_CODES.includes(real.errorCode)) {
+          await db.from("conversations").update({ status: "invalid" }).eq("id", m.conversation).neq("status", "blocked");
+        }
+      }
+      reconciled++;
+    }
+    await new Promise((r) => setTimeout(r, RECONCILE_THROTTLE_MS));
+  }
+
   // Find due messages, then claim them atomically (the status guard means a
   // concurrent run only gets the rows it actually flipped).
   // CRITICAL: only rows WITHOUT a twilio_sid. Rows that already have one were
@@ -49,13 +84,13 @@ async function run(req: NextRequest) {
     .eq("status", "scheduled").is("twilio_sid", null).lte("scheduled_at", new Date(now).toISOString())
     .order("scheduled_at", { ascending: true }).limit(CAP);
   const ids = (due || []).map((d: any) => d.id);
-  if (ids.length === 0) return NextResponse.json({ claimed: 0, sent: 0, skipped: 0, failed: 0 });
+  if (ids.length === 0) return NextResponse.json({ reconciled, claimed: 0, sent: 0, skipped: 0, failed: 0 });
 
   const { data: claimed } = await db.from("messages").update({ status: "sending" })
     .in("id", ids).eq("status", "scheduled").is("twilio_sid", null)
     .select("id, conversation, content_sid, content_vars, body, campaign");
   const rows = claimed || [];
-  if (rows.length === 0) return NextResponse.json({ claimed: 0, sent: 0, skipped: 0, failed: 0 });
+  if (rows.length === 0) return NextResponse.json({ reconciled, claimed: 0, sent: 0, skipped: 0, failed: 0 });
 
   // Pull the phone/suppression status and the campaign's sender in two queries.
   const convIds = Array.from(new Set(rows.map((m: any) => m.conversation).filter(Boolean)));
@@ -106,7 +141,7 @@ async function run(req: NextRequest) {
     if (count === 0) await db.from("campaigns").update({ status: "completed" }).eq("id", cid);
   }
 
-  return NextResponse.json({ claimed: rows.length, sent, skipped, failed });
+  return NextResponse.json({ reconciled, claimed: rows.length, sent, skipped, failed });
 }
 
 export async function POST(req: NextRequest) {

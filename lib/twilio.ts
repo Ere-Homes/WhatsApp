@@ -60,6 +60,19 @@ export async function getContentMedia(contentSid: string): Promise<string | null
   }
 }
 
+// Read a message's current status from Twilio. Used to reconcile rows whose SID
+// was created via Twilio's own scheduler (our cron never sends those, so their DB
+// status would otherwise freeze at 'scheduled' even after Twilio sends/fails/cancels).
+export async function getMessageStatus(messageSid: string): Promise<{ status: string | null; errorCode: string | null } | null> {
+  try {
+    const { sid } = twilioCreds();
+    const data: any = await twilioGet(`/2010-04-01/Accounts/${sid}/Messages/${messageSid}.json`);
+    return { status: data?.status || null, errorCode: data?.error_code ? String(data.error_code) : null };
+  } catch {
+    return null; // never let a reconcile lookup break the cron
+  }
+}
+
 // JSON POST against content.twilio.com (Content API).
 export async function twilioContentPost(path: string, body: any) {
   const { authHeader } = twilioCreds();

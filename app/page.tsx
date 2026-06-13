@@ -6,7 +6,16 @@ import { Icon, IC, Avatar, PageHead } from "@/lib/ui";
 type Recent = { name: string; msg: string; time: string; unread: number; tag: string };
 type Perf = { name: string; sent: number; replyRate: number };
 type Kpis = { conversations: number | null; response: number | null; campaigns: number | null; leads: number | null };
+type Waiting = { id: string; name: string; msg: string; at: string | null; tag: string; windowOpen: boolean };
+type ActiveCamp = { id: string; name: string; status: string; total: number; reached: number; failed: number; scheduled: number; deliveryRate: number | null; finish_at: string | null };
 const dash = (n: number | null) => (n === null ? "—" : n);
+
+// WhatsApp's free-reply window is 24h from the customer's last inbound message.
+const WINDOW_MS = 24 * 3600000;
+const isWindowOpen = (iso?: string | null) => !!iso && Date.now() - new Date(iso).getTime() < WINDOW_MS;
+// "Jun 16, 3:00 PM" — campaign finish labels must carry the date, not just a time.
+const fmtFinish = (iso?: string | null) =>
+  iso ? new Date(iso).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "—";
 
 // datetime-local <-> Date helpers (local time, minute precision), matching Insights.
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -38,6 +47,8 @@ export default function Dashboard() {
   const [kpis, setKpis] = useState<Kpis>({ conversations: null, response: null, campaigns: null, leads: null });
   const [recent, setRecent] = useState<Recent[] | null>(null);
   const [perf, setPerf] = useState<Perf[] | null>(null);
+  const [waiting, setWaiting] = useState<Waiting[] | null>(null);
+  const [activeCamps, setActiveCamps] = useState<ActiveCamp[] | null>(null);
 
   // Date range that drives the KPI bar. Default window: last 24 hours.
   const [to, setTo] = useState(() => toInput(new Date()));
@@ -91,6 +102,24 @@ export default function Dashboard() {
           .map((x) => ({ name: x.name, sent: x.s.sent, replyRate: x.s.replyRate })),
       );
     }).catch(() => setPerf([]));
+
+    // Leads waiting on a reply (their last message is inbound).
+    const tagOf2 = (s?: string) => (s || "").toLowerCase() === "hot" ? "Hot" : (s || "").toLowerCase() === "warm" ? "Warm" : "";
+    fetch("/api/conversations?view=waiting&limit=50").then((r) => r.json()).then((d) => {
+      setWaiting((d.conversations || []).slice(0, 6).map((c: any) => ({
+        id: c.id,
+        name: c.name || "+" + c.wa_phone,
+        msg: c.last_body || "",
+        at: c.last_at,
+        tag: tagOf2(c.lead_status),
+        windowOpen: isWindowOpen(c.last_at),
+      })));
+    }).catch(() => setWaiting([]));
+
+    // Live progress for in-flight campaigns.
+    fetch("/api/campaigns?view=activeProgress").then((r) => r.json()).then((d) => {
+      setActiveCamps((d.campaigns || []).slice(0, 4));
+    }).catch(() => setActiveCamps([]));
   }, []);
 
   // Range-driven KPIs: conversations + response rate (Twilio insights) and new
@@ -156,6 +185,67 @@ export default function Dashboard() {
         <div className="kpi"><div className="kl">Response rate</div><div className="kv">{kpis.response === null ? "—" : `${kpis.response}%`}</div><div className="ks">last {spanLabel}</div></div>
         <div className="kpi"><div className="kl">Active campaigns</div><div className="kv">{dash(kpis.campaigns)}</div><div className="ks">live now</div></div>
         <div className="kpi"><div className="kl">New leads</div><div className="kv">{dash(kpis.leads)}</div><div className="ks">last {spanLabel}</div></div>
+      </div>
+
+      <div className="grid-2">
+        <div className="card">
+          <div className="card-head">
+            <div className="card-t">Leads waiting on you</div>
+            <a className="card-link" href="/inbox" onClick={(e) => { e.preventDefault(); go("/inbox"); }}>Go to inbox</a>
+          </div>
+          <div className="convlist-mini">
+            {(waiting || []).map((c) => (
+              <div className="cm-row" key={c.id} onClick={() => go("/inbox")}>
+                <Avatar name={c.name} size={36} />
+                <div className="cm-main">
+                  <div className="cm-top"><span className="cm-name">{c.name}</span><TagDot tag={c.tag} /></div>
+                  <div className="cm-msg">{c.msg}</div>
+                </div>
+                <div className="cm-side" style={{ alignItems: "flex-end", gap: 4 }}>
+                  <span className="cm-time">{relTime(c.at)}</span>
+                  <span className="leadtag" title={c.windowOpen ? "You can reply with a free message" : "24h window closed — send a template to re-open"}>
+                    <span className="d" style={{ background: c.windowOpen ? "var(--green-dot)" : "var(--ink-3)" }} />
+                    {c.windowOpen ? "Open" : "Template"}
+                  </span>
+                </div>
+              </div>
+            ))}
+            {waiting === null && <div className="empty sm">Loading…</div>}
+            {waiting !== null && waiting.length === 0 && <div className="empty sm">No leads waiting. 🎉</div>}
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="card-head">
+            <div className="card-t">Live campaigns</div>
+            <a className="card-link" href="/campaigns/history" onClick={(e) => { e.preventDefault(); go("/campaigns/history"); }}>Campaign log</a>
+          </div>
+          <div className="perf">
+            {(activeCamps || []).map((c) => {
+              const total = Math.max(1, c.total || 0);
+              const pctReached = Math.round((c.reached / total) * 100);
+              const pctFailed = Math.round((c.failed / total) * 100);
+              return (
+                <div key={c.id} style={{ padding: "10px 0", borderBottom: "1px solid var(--border)" }} onClick={() => go("/campaigns/history")}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+                    <span className="mono" style={{ fontSize: 13, fontWeight: 600 }}>{c.name}</span>
+                    <span style={{ fontSize: 12, color: "var(--ink-3)" }}>{c.status === "scheduled" ? `finishes ${fmtFinish(c.finish_at)}` : c.status}</span>
+                  </div>
+                  <div style={{ display: "flex", height: 6, borderRadius: 4, overflow: "hidden", background: "var(--border)", margin: "6px 0" }}>
+                    <span style={{ width: `${pctReached}%`, background: "var(--green-dot)" }} />
+                    <span style={{ width: `${pctFailed}%`, background: "var(--red)" }} />
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--ink-3)" }}>
+                    <b style={{ color: "var(--ink)" }}>{c.reached.toLocaleString()}</b> reached · {c.scheduled.toLocaleString()} queued · {c.failed.toLocaleString()} failed
+                    {c.deliveryRate !== null && <> · <span style={{ color: c.deliveryRate < 80 ? "var(--red)" : "var(--ink-2)" }}>{c.deliveryRate}% delivery</span></>}
+                  </div>
+                </div>
+              );
+            })}
+            {activeCamps === null && <div className="empty sm">Loading…</div>}
+            {activeCamps !== null && activeCamps.length === 0 && <div className="empty sm">No campaigns running.</div>}
+          </div>
+        </div>
       </div>
 
       <div className="grid-2">

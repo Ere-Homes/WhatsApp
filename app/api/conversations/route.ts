@@ -43,6 +43,20 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ conversations: data || [] });
     }
 
+    if (view === "waiting") {
+      // People whose LAST message is inbound = they messaged us and we haven't
+      // replied since. The dashboard's daily action list. Suppressed contacts
+      // excluded. Caller computes 24h-window open/closed from last_at.
+      const limit = Math.min(100, Number(sp.get("limit")) || 50);
+      const { data, error } = await db.from("conversations")
+        .select("id, wa_phone, name, last_body, last_at, lead_status, unread")
+        .eq("last_direction", "in")
+        .not("status", "in", "(blocked,invalid)")
+        .order("last_at", { ascending: false }).limit(limit);
+      if (error) throw new Error(error.message);
+      return NextResponse.json({ conversations: data || [] });
+    }
+
     if (view === "suppressed") {
       const { data, error } = await db.from("conversations").select("id, wa_phone, name, status, last_at")
         .in("status", ["blocked", "invalid"]).order("last_at", { ascending: false }).limit(1000);

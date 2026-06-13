@@ -21,6 +21,46 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ campaigns: data || [] });
     }
 
+    if (view === "activeProgress") {
+      // Live progress for in-flight campaigns, computed from the message log
+      // (WhatsApp receipts update messages.status, not the campaign rollup, so
+      // the rollup columns go stale). Reuses the campaign_funnel() aggregate.
+      const { data: camps, error: cErr } = await db.from("campaigns")
+        .select("id,name,sender,status,total,finish_at,created_at")
+        .in("status", ["sending", "scheduled"])
+        .order("created_at", { ascending: false });
+      if (cErr) throw new Error(cErr.message);
+      const ids = new Set((camps || []).map((c: any) => c.id));
+      if (!camps?.length) return NextResponse.json({ campaigns: [] });
+
+      // Per-campaign status tallies. RPC returns grouped (campaign,status,error_code,n).
+      const tally: Record<string, { delivered: number; read: number; failed: number; scheduled: number; reached: number; handed: number }> = {};
+      const blank = () => ({ delivered: 0, read: 0, failed: 0, scheduled: 0, reached: 0, handed: 0 });
+      const { data: rpc } = await db.rpc("campaign_funnel");
+      for (const r of (Array.isArray(rpc) ? rpc : []) as any[]) {
+        if (!r.campaign || !ids.has(r.campaign)) continue;
+        const t = (tally[r.campaign] ||= blank());
+        const n = Number(r.n) || 0;
+        const s = String(r.status || "");
+        if (s === "scheduled") t.scheduled += n;
+        else if (s === "failed" || s === "undelivered") { t.failed += n; t.handed += n; }
+        else { t.handed += n; if (s === "read") { t.read += n; t.delivered += n; t.reached += n; } else if (s === "delivered") { t.delivered += n; t.reached += n; } }
+      }
+
+      const out = (camps || []).map((c: any) => {
+        const t = tally[c.id] || blank();
+        const resolved = t.delivered + t.failed; // messages with a final receipt
+        return {
+          id: c.id, name: c.name, sender: c.sender, status: c.status,
+          total: c.total, finish_at: c.finish_at,
+          reached: t.reached, delivered: t.delivered, read: t.read,
+          failed: t.failed, scheduled: t.scheduled,
+          deliveryRate: resolved ? Math.round((t.delivered / resolved) * 100) : null,
+        };
+      });
+      return NextResponse.json({ campaigns: out });
+    }
+
     // default: log — most recent campaigns with their rollup counts.
     const limit = Math.min(200, Number(sp.get("limit")) || 100);
     const { data, error } = await db.from("campaigns").select("*")

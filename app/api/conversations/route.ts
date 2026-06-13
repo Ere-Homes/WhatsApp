@@ -26,7 +26,11 @@ export async function GET(req: NextRequest) {
 
     if (view === "recent") {
       const limit = Math.min(200, Number(sp.get("limit")) || 50);
+      // Only conversations we've actually messaged or heard from (last_at set).
+      // A drip pre-creates a row per recipient while their send is still
+      // scheduled; those have no activity yet and must not surface here.
       const { data, error } = await db.from("conversations").select("*")
+        .not("last_at", "is", null)
         .order("last_at", { ascending: false }).limit(limit);
       if (error) throw new Error(error.message);
       return NextResponse.json({ conversations: data || [] });
@@ -60,8 +64,11 @@ export async function GET(req: NextRequest) {
     // default: inbox — recent 1000 PLUS every actionable lead (hot/warm/unread)
     // even if older than that window, merged + deduped + sorted newest-first, so
     // the Hot/Unread tabs never drop a lead past the recent 1000.
+    // recent = conversations with real activity (last_at set). Not-yet-sent drip
+    // recipients have last_at null and would otherwise sort to the TOP (Postgres
+    // NULLS FIRST on DESC), flooding the inbox with blank, un-openable rows.
     const [recent, priority] = await Promise.all([
-      db.from("conversations").select("*").order("last_at", { ascending: false }).limit(1000),
+      db.from("conversations").select("*").not("last_at", "is", null).order("last_at", { ascending: false }).limit(1000),
       db.from("conversations").select("*").or("lead_status.eq.hot,lead_status.eq.warm,unread.eq.true").limit(1000),
     ]);
     if (recent.error) throw new Error(recent.error.message);

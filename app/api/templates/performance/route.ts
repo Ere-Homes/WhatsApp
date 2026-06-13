@@ -22,6 +22,10 @@ export async function GET() {
         .select("content_sid, conversation, status, created_at")
         .not("content_sid", "is", null)
         .eq("direction", "out")
+        // Only count messages actually handed to Twilio. Drip campaigns pre-create
+        // their queue as status='scheduled' rows; counting those as "Sent" inflates
+        // the denominator and makes delivery rate read far lower than reality.
+        .neq("status", "scheduled")
         .gte("created_at", since)
         .order("created_at", { ascending: true })
         .range(from, from + 999);

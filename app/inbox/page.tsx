@@ -155,7 +155,13 @@ export default function Inbox() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeId, convos]);
 
-  useEffect(() => { if (threadRef.current) threadRef.current.scrollTop = threadRef.current.scrollHeight; }, [activeId, convos]);
+  // Jump to the newest message when a thread loads or updates. We do it on the
+  // next frame (after layout) AND expose scrollToBottom so a template's image
+  // can re-scroll once it finishes loading — otherwise the image expands the
+  // thread *after* this runs and shoves the latest reply below the fold, which
+  // looked like "the reply isn't showing".
+  const scrollToBottom = () => { const el = threadRef.current; if (el) el.scrollTop = el.scrollHeight; };
+  useEffect(() => { const r = requestAnimationFrame(scrollToBottom); return () => cancelAnimationFrame(r); }, [activeId, convos]);
 
   // Update a conversation through the gated server route (whitelisted fields).
   async function patchConvo(id: string, patch: Record<string, any>) {
@@ -307,7 +313,7 @@ export default function Inbox() {
                       <div className="msg-bubble">
                         {m.media && (/\.pdf($|\?)/i.test(m.media)
                           ? <a href={mediaSrc(m.media)} target="_blank" rel="noreferrer" style={{ color: "var(--wa-blue)", display: "block", marginBottom: 4 }}>Open document ↗</a>
-                          : <img src={mediaSrc(m.media)} alt="" />)}
+                          : <img src={mediaSrc(m.media)} alt="" onLoad={scrollToBottom} />)}
                         {m.t}
                         <span className="msg-time">{m.at} {m.from === "out" && <Ticks status={m.status} />}</span>
                       </div>

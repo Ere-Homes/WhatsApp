@@ -55,7 +55,7 @@ async function run(req: NextRequest) {
   // Time-boxed and capped so a big backlog never starves the send loop below.
   let reconciled = 0;
   const { data: nativePending } = await db.from("messages")
-    .select("id, twilio_sid, conversation")
+    .select("id, twilio_sid, conversation, body, created_at")
     .eq("status", "scheduled").not("twilio_sid", "is", null).limit(RECONCILE_CAP);
   const reconcileDeadline = now + RECONCILE_BUDGET_MS;
   for (const m of (nativePending || []) as any[]) {
@@ -64,7 +64,10 @@ async function run(req: NextRequest) {
     if (real?.status && real.status !== "scheduled") {
       await db.from("messages").update({ status: real.status, error_code: real.errorCode || null }).eq("id", m.id);
       if (m.conversation) {
-        await db.from("conversations").update({ last_status: real.status, last_direction: "out" }).eq("id", m.conversation);
+        // Also denormalize the preview fields the inbox list reads — without
+        // these a natively-scheduled send leaves the conversation row blank
+        // (no last message, no time) even though the message exists.
+        await db.from("conversations").update({ last_status: real.status, last_direction: "out", last_body: m.body || "[template]", last_at: m.created_at }).eq("id", m.conversation);
         const isFail = real.status === "undelivered" || real.status === "failed";
         if (isFail && real.errorCode && INVALID_NUMBER_CODES.includes(real.errorCode)) {
           await db.from("conversations").update({ status: "invalid" }).eq("id", m.conversation).neq("status", "blocked");
